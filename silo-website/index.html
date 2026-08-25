@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Silo — Multiple accounts, zero overlap</title>
+  <meta name="description" content="Silo launches isolated browser sessions for each of your game accounts — different cookies, different storage, different IP. They never cross." />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='5' width='24' height='6' rx='2' fill='%23f0f0f0'/%3E%3Crect x='4' y='13' width='24' height='6' rx='2' fill='%23f0f0f0'/%3E%3Crect x='4' y='21' width='24' height='6' rx='2' fill='%23f0f0f0'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #111111;
+      --surface: #1a1a1a;
+      --border:  rgba(255,255,255,0.07);
+      --text:    #f0f0f0;
+      --muted:   #888888;
+      --accent:  #ffffff;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.09); border-radius: 3px; }
+
+    /* Fade-in */
+    .fade-in {
+      opacity: 0;
+      transform: translateY(18px);
+      transition: opacity 0.55s ease, transform 0.55s ease;
+    }
+    .fade-in.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ─── NAVBAR ─── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      padding: 0 6%;
+    }
+    nav.scrolled {
+      background: rgba(17,17,17,0.82);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      width: 100%;
+      max-width: 1160px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      text-decoration: none;
+      color: var(--text);
+    }
+    .nav-logo-text {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.025em;
+    }
+    .nav-actions { display: flex; align-items: center; gap: 8px; }
+
+    .btn-ghost-disabled {
+      padding: 7px 15px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: #555;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: not-allowed;
+    }
+    .btn-outline {
+      padding: 7px 15px;
+      border-radius: 7px;
+      border: 1px solid rgba(255,255,255,0.13);
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      text-decoration: none;
+      transition: background 0.18s, border-color 0.18s;
+    }
+    .btn-outline:hover {
+      background: rgba(255,255,255,0.09);
+      border-color: rgba(255,255,255,0.22);
+    }
+
+    /* ─── HERO ─── */
+    #hero {
+      min-height: 100svh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 110px 6% 80px;
+      text-align: center;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 100px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      margin-bottom: 30px;
+    }
+    .pill-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #28c840;
+    }
+    h1 {
+      font-size: clamp(2.4rem, 5.8vw, 4.4rem);
+      font-weight: 700;
+      letter-spacing: -0.045em;
+      line-height: 1.08;
+      max-width: 760px;
+      margin-bottom: 22px;
+    }
+    .hero-sub {
+      font-size: clamp(0.95rem, 1.8vw, 1.1rem);
+      color: var(--muted);
+      max-width: 520px;
+      line-height: 1.72;
+      margin-bottom: 38px;
+      font-weight: 400;
+    }
+    .hero-ctas {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 68px;
+    }
+    .btn-primary {
+      padding: 11px 24px;
+      border-radius: 8px;
+      border: none;
+      background: var(--accent);
+      color: #111;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      transition: opacity 0.18s, transform 0.15s;
+    }
+    .btn-primary:hover { opacity: 0.87; transform: translateY(-1px); }
+    .btn-secondary {
+      padding: 11px 24px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      text-decoration: none;
+      transition: border-color 0.18s, background 0.18s;
+    }
+    .btn-secondary:hover {
+      border-color: rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.03);
+    }
+
+    /* ─── APP MOCKUP ─── */
+    .mockup-wrap {
+      width: 100%;
+      max-width: 920px;
+    }
+    .app-mockup {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      overflow: hidden;
+      box-shadow:
+        0 50px 120px rgba(0,0,0,0.65),
+        0 0 0 1px rgba(255,255,255,0.035);
+    }
+    .mockup-titlebar {
+      height: 38px;
+      background: #131313;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      gap: 7px;
+      flex-shrink: 0;
+    }
+    .tb-dot { width: 11px; height: 11px; border-radius: 50%; }
+    .tb-close  { background: #ff5f57; }
+    .tb-min    { background: #febc2e; }
+    .tb-max    { background: #28c840; }
+    .tb-title {
+      font-size: 11px;
+      color: #555;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    .mockup-body {
+      display: flex;
+      height: 390px;
+      position: relative;
+    }
+
+    /* Sidebar */
+    .m-sidebar {
+      width: 196px;
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      background: #121212;
+      display: flex;
+      flex-direction: column;
+      padding: 14px 0;
+      overflow: hidden;
+    }
+    .sb-label {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #444;
+      padding: 0 14px;
+      margin-bottom: 5px;
+    }
+    .sb-label.top-gap { margin-top: 10px; }
+    .sb-game {
+      padding: 7px 14px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+    .sb-game.active { background: rgba(255,255,255,0.04); }
+    .g-icon {
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      flex-shrink: 0;
+    }
+    .g-name { font-size: 12px; font-weight: 500; color: var(--text); white-space: nowrap; }
+    .sb-divider { height: 1px; background: var(--border); margin: 8px 14px; }
+    .sb-env {
+      padding: 6px 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .e-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .e-name { font-size: 11.5px; color: #bbb; flex: 1; }
+    .e-badge {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      padding: 2px 5px;
+      border-radius: 4px;
+    }
+    .e-badge.live { background: rgba(40,200,64,0.12); color: #28c840; }
+    .e-badge.idle { background: rgba(255,255,255,0.04); color: #444; }
+
+    /* Main area */
+    .m-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .m-tabbar {
+      height: 38px;
+      background: #131313;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: flex-end;
+      padding: 0 10px;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+    .m-tab {
+      padding: 0 13px;
+      height: 30px;
+      border-radius: 6px 6px 0 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11.5px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .m-tab.active {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-bottom: 1px solid var(--surface);
+    }
+    .m-tab.inactive { color: #555; }
+    .t-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .m-content {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--surface);
+      padding: 20px;
+    }
+    .browser-shell {
+      width: 100%;
+      height: 100%;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #161616;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .b-urlbar {
+      height: 32px;
+      background: #111;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .b-pill {
+      flex: 1;
+      height: 18px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      padding: 0 8px;
+    }
+    .b-url { font-size: 10px; color: #4a4a4a; letter-spacing: 0.01em; }
+    .b-proxy {
+      font-size: 9px;
+      color: #28c840;
+      background: rgba(40,200,64,0.08);
+      padding: 1px 6px;
+      border-radius: 3px;
+      margin-left: auto;
+      flex-shrink: 0;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+    .b-page {
+      flex: 1;
+      padding: 24px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .b-block {
+      height: 22px;
+      border-radius: 3px;
+      background: rgba(255,255,255,0.06);
+      width: 52%;
+    }
+    .b-line {
+      height: 8px;
+      border-radius: 3px;
+      background: rgba(255,255,255,0.04);
+    }
+
+    /* ─── SECTIONS ─── */
+    section { padding: 96px 6%; }
+    .s-inner { max-width: 1160px; margin: 0 auto; }
+    .s-eyebrow {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+    .s-h2 {
+      font-size: clamp(1.75rem, 3.2vw, 2.5rem);
+      font-weight: 700;
+      letter-spacing: -0.035em;
+      line-height: 1.18;
+      margin-bottom: 14px;
+    }
+    .s-sub {
+      font-size: 1rem;
+      color: var(--muted);
+      max-width: 480px;
+      line-height: 1.72;
+    }
+
+    /* ─── HOW IT WORKS ─── */
+    #how { border-top: 1px solid var(--border); }
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      margin-top: 52px;
+      gap: 1px;
+      background: var(--border);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .step {
+      background: var(--surface);
+      padding: 40px 34px 40px;
+      position: relative;
+    }
+    .step-num {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: #3a3a3a;
+      margin-bottom: 22px;
+      font-variant-numeric: tabular-nums;
+    }
+    .step-title {
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 10px;
+    }
+    .step-desc {
+      font-size: 0.875rem;
+      color: var(--muted);
+      line-height: 1.72;
+    }
+
+    /* ─── FEATURES ─── */
+    #features { border-top: 1px solid var(--border); }
+    .feat-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      margin-top: 52px;
+      gap: 1px;
+      background: var(--border);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .feat-card {
+      background: var(--surface);
+      padding: 36px 30px;
+      transition: background 0.2s;
+    }
+    .feat-card:hover { background: #1d1d1d; }
+    .feat-icon {
+      width: 34px;
+      height: 34px;
+      color: #666;
+      margin-bottom: 18px;
+    }
+    .feat-title {
+      font-size: 0.93rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+    }
+    .feat-desc {
+      font-size: 0.84rem;
+      color: var(--muted);
+      line-height: 1.72;
+    }
+
+    /* ─── WAITLIST ─── */
+    #waitlist { border-top: 1px solid var(--border); }
+    .waitlist-card {
+      max-width: 580px;
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 60px 48px;
+      text-align: center;
+    }
+    .waitlist-card .s-h2 { margin-bottom: 10px; }
+    .wl-sub {
+      font-size: 0.95rem;
+      color: var(--muted);
+      line-height: 1.7;
+      margin-bottom: 30px;
+    }
+    .wl-form {
+      display: flex;
+      gap: 8px;
+      max-width: 420px;
+      margin: 0 auto;
+    }
+    .wl-input {
+      flex: 1;
+      padding: 11px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13.5px;
+      outline: none;
+      min-width: 0;
+      transition: border-color 0.18s;
+    }
+    .wl-input::placeholder { color: #444; }
+    .wl-input:focus { border-color: rgba(255,255,255,0.22); }
+    .wl-btn {
+      padding: 11px 20px;
+      border-radius: 8px;
+      border: none;
+      background: var(--accent);
+      color: #111;
+      font-family: inherit;
+      font-size: 13.5px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: opacity 0.18s;
+    }
+    .wl-btn:hover { opacity: 0.87; }
+    .wl-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .wl-success {
+      display: none;
+      margin-top: 18px;
+      font-size: 14px;
+      color: #28c840;
+      font-weight: 500;
+    }
+    .wl-error {
+      display: none;
+      margin-top: 14px;
+      font-size: 12.5px;
+      color: #ff5f57;
+    }
+
+    /* ─── FOOTER ─── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 34px 6%;
+    }
+    .footer-inner {
+      max-width: 1160px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .footer-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .footer-logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      color: var(--text);
+    }
+    .footer-logo-name { font-size: 14px; font-weight: 600; letter-spacing: -0.02em; }
+    .footer-copy { font-size: 12px; color: #444; }
+
+    /* ─── RESPONSIVE ─── */
+    @media (max-width: 920px) {
+      .steps-grid { grid-template-columns: 1fr; }
+      .feat-grid { grid-template-columns: repeat(2, 1fr); }
+      .m-sidebar { width: 168px; }
+      .mockup-body { height: 320px; }
+    }
+    @media (max-width: 620px) {
+      nav { padding: 0 4%; }
+      section { padding: 72px 4%; }
+      #hero { padding: 100px 4% 64px; }
+      .feat-grid { grid-template-columns: 1fr; }
+      .hero-ctas { flex-direction: column; align-items: stretch; text-align: center; }
+      .btn-primary, .btn-secondary { text-align: center; }
+      .m-sidebar { display: none; }
+      .mockup-body { height: 260px; }
+      .waitlist-card { padding: 44px 24px; }
+      .wl-form { flex-direction: column; }
+      footer { padding: 28px 4%; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav id="navbar">
+  <div class="nav-inner" style="position:relative;">
+    <a href="#" class="nav-logo">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="1" y="1.5" width="18" height="5" rx="2" fill="#f0f0f0"/>
+        <rect x="1" y="7.5" width="18" height="5" rx="2" fill="#f0f0f0"/>
+        <rect x="1" y="13.5" width="18" height="5" rx="2" fill="#f0f0f0"/>
+      </svg>
+      <span class="nav-logo-text">Silo</span>
+    </a>
+    <span class="tb-title">Silo</span>
+    <div class="nav-actions">
+      <button class="btn-ghost-disabled" disabled>Coming Soon</button>
+      <a href="#waitlist" class="btn-outline">Join Waitlist</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+  <div class="pill fade-in"><span class="pill-dot"></span>Early access · Windows</div>
+  <h1 class="fade-in">One app. Multiple accounts.<br>Zero overlap.</h1>
+  <p class="hero-sub fade-in">Silo launches isolated browser sessions for each of your game accounts — different cookies, different storage, different IP. They never cross.</p>
+  <div class="hero-ctas fade-in">
+    <a href="#waitlist" class="btn-primary">Join the Waitlist</a>
+    <a href="#features" class="btn-secondary">Learn More</a>
+  </div>
+
+  <!-- App Mockup -->
+  <div class="mockup-wrap fade-in">
+    <div class="app-mockup">
+      <div class="mockup-titlebar" style="position:relative;">
+        <div class="tb-dot tb-close"></div>
+        <div class="tb-dot tb-min"></div>
+        <div class="tb-dot tb-max"></div>
+        <span style="position:absolute;left:50%;transform:translateX(-50%);font-size:11px;color:#555;font-weight:500;letter-spacing:0.02em;">Silo</span>
+      </div>
+      <div class="mockup-body">
+        <!-- Sidebar -->
+        <div class="m-sidebar">
+          <div class="sb-label">Games</div>
+          <div class="sb-game active">
+            <svg class="g-icon" viewBox="0 0 26 26" fill="none">
+              <rect width="26" height="26" rx="6" fill="#1a2740"/>
+              <rect x="5" y="10" width="16" height="6" rx="2" fill="#3a7bd5" opacity="0.85"/>
+              <rect x="9" y="5" width="8" height="6" rx="1.5" fill="#2a5caa" opacity="0.7"/>
+            </svg>
+            <span class="g-name">Forge of Empires</span>
+          </div>
+          <div class="sb-game">
+            <svg class="g-icon" viewBox="0 0 26 26" fill="none">
+              <rect width="26" height="26" rx="6" fill="#1a2a1a"/>
+              <circle cx="13" cy="13" r="6" fill="#2d7a2d" opacity="0.7"/>
+              <circle cx="13" cy="13" r="3" fill="#5cb85c" opacity="0.55"/>
+            </svg>
+            <span class="g-name">Tribal Wars</span>
+          </div>
+          <div class="sb-game">
+            <svg class="g-icon" viewBox="0 0 26 26" fill="none">
+              <rect width="26" height="26" rx="6" fill="#251a2a"/>
+              <polygon points="13,6 21,20 5,20" fill="#9c4dc5" opacity="0.6"/>
+            </svg>
+            <span class="g-name">Grepolis</span>
+          </div>
+          <div class="sb-divider"></div>
+          <div class="sb-label top-gap">Environments</div>
+          <div class="sb-env">
+            <div class="e-dot" style="background:#3a7bd5;"></div>
+            <span class="e-name">Main account</span>
+            <span class="e-badge live">Live</span>
+          </div>
+          <div class="sb-env">
+            <div class="e-dot" style="background:#5cb85c;"></div>
+            <span class="e-name">Alt account</span>
+            <span class="e-badge live">Live</span>
+          </div>
+          <div class="sb-env">
+            <div class="e-dot" style="background:#555;"></div>
+            <span class="e-name">Account 3</span>
+            <span class="e-badge idle">Idle</span>
+          </div>
+        </div>
+        <!-- Main -->
+        <div class="m-main">
+          <div class="m-tabbar">
+            <div class="m-tab active">
+              <div class="t-dot" style="background:#3a7bd5;"></div>
+              Main account
+            </div>
+            <div class="m-tab inactive">
+              <div class="t-dot" style="background:#5cb85c;"></div>
+              Alt account
+            </div>
+          </div>
+          <div class="m-content">
+            <div class="browser-shell">
+              <div class="b-urlbar">
+                <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                  <circle cx="4.5" cy="4.5" r="4" stroke="#3a3a3a" stroke-width="1"/>
+                  <path d="M4.5 2.5v2l1.2 1.2" stroke="#3a3a3a" stroke-width="1" stroke-linecap="round"/>
+                </svg>
+                <div class="b-pill">
+                  <span class="b-url">forgeofempires.com</span>
+                  <span class="b-proxy">US-West · Proxy</span>
+                </div>
+              </div>
+              <div class="b-page">
+                <div class="b-block"></div>
+                <div class="b-line" style="width:78%;"></div>
+                <div class="b-line" style="width:60%;"></div>
+                <div style="height:6px;"></div>
+                <div class="b-line" style="width:86%;"></div>
+                <div class="b-line" style="width:55%;"></div>
+                <div class="b-line" style="width:72%;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section id="how">
+  <div class="s-inner">
+    <div class="s-eyebrow fade-in">How it works</div>
+    <h2 class="s-h2 fade-in">Three steps to full isolation</h2>
+    <div class="steps-grid">
+      <div class="step fade-in">
+        <div class="step-num">01</div>
+        <div class="step-title">Add your games</div>
+        <p class="step-desc">Pick from the built-in catalog of popular strategy games, or enter any URL to run a site inside its own isolated context.</p>
+      </div>
+      <div class="step fade-in">
+        <div class="step-num">02</div>
+        <div class="step-title">Create environments</div>
+        <p class="step-desc">Each environment is a completely isolated browser identity — its own cookies, storage, cache, and optionally its own proxy.</p>
+      </div>
+      <div class="step fade-in">
+        <div class="step-num">03</div>
+        <div class="step-title">Launch and play</div>
+        <p class="step-desc">Open multiple accounts simultaneously, each on its own IP. Switch between them instantly. Nothing ever crosses between sessions.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section id="features">
+  <div class="s-inner">
+    <div class="s-eyebrow fade-in">Features</div>
+    <h2 class="s-h2 fade-in">Built for account managers<br>who don't want surprises</h2>
+    <div class="feat-grid">
+
+      <div class="feat-card fade-in">
+        <svg class="feat-icon" viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="12" height="12" rx="2.5"/>
+          <rect x="19" y="3" width="12" height="12" rx="2.5"/>
+          <rect x="3" y="19" width="12" height="12" rx="2.5"/>
+          <rect x="19" y="19" width="12" height="12" rx="2.5"/>
+          <line x1="17" y1="3" x2="17" y2="31" stroke-dasharray="2 2" stroke-width="0.8" opacity="0.35"/>
+          <line x1="3" y1="17" x2="31" y2="17" stroke-dasharray="2 2" stroke-width="0.8" opacity="0.35"/>
+        </svg>
+        <div class="feat-title">Complete isolation</div>
+        <p class="feat-desc">Cookies, localStorage, IndexedDB, and session data are separated per environment. No state leaks between accounts.</p>
+      </div>
+
+      <div class="feat-card fade-in">
+        <svg class="feat-icon" viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="17" cy="17" r="12"/>
+          <ellipse cx="17" cy="17" rx="5.5" ry="12"/>
+          <line x1="5" y1="17" x2="29" y2="17"/>
+          <path d="M8 10.5c3 1.8 5.5 2.8 9 2.8s6-1 9-2.8"/>
+          <path d="M8 23.5c3-1.8 5.5-2.8 9-2.8s6 1 9 2.8"/>
+        </svg>
+        <div class="feat-title">Proxy per environment</div>
+        <p class="feat-desc">Assign a unique proxy to each environment. Every account runs from a distinct IP — automatically, with no manual switching.</p>
+      </div>
+
+      <div class="feat-card fade-in">
+        <svg class="feat-icon" viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="7" width="28" height="20" rx="3"/>
+          <path d="M3 12h28"/>
+          <circle cx="8" cy="9.5" r="1" fill="currentColor" stroke="none"/>
+          <circle cx="12" cy="9.5" r="1" fill="currentColor" stroke="none"/>
+          <rect x="7" y="17" width="8" height="5" rx="1.5" fill="currentColor" stroke="none" opacity="0.5"/>
+          <rect x="19" y="17" width="8" height="5" rx="1.5" fill="currentColor" stroke="none" opacity="0.22"/>
+        </svg>
+        <div class="feat-title">Built-in game catalog</div>
+        <p class="feat-desc">Launch popular browser strategy games directly from a curated list — no copying URLs, no bookmarks to manage.</p>
+      </div>
+
+      <div class="feat-card fade-in">
+        <svg class="feat-icon" viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 4v7M17 23v7"/>
+          <path d="M4 17h7M23 17h7"/>
+          <circle cx="17" cy="17" r="6"/>
+          <circle cx="17" cy="17" r="2.2" fill="currentColor" stroke="none" opacity="0.5"/>
+        </svg>
+        <div class="feat-title">Persistent sessions</div>
+        <p class="feat-desc">Log in once per account and stay logged in. Environments persist across restarts — no re-authentication, no lost progress.</p>
+      </div>
+
+      <div class="feat-card fade-in">
+        <svg class="feat-icon" viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="5" width="28" height="24" rx="3"/>
+          <path d="M3 10h28"/>
+          <path d="M9 7.5h1.5M13 7.5h1.5M17 7.5h1.5"/>
+          <rect x="7" y="16" width="9" height="2" rx="1" fill="currentColor" stroke="none" opacity="0.45"/>
+          <rect x="7" y="21" width="14" height="2" rx="1" fill="currentColor" stroke="none" opacity="0.28"/>
+          <rect x="7" y="26" width="7" height="2" rx="1" fill="currentColor" stroke="none" opacity="0.18"/>
+        </svg>
+        <div class="feat-title">Clean workspace</div>
+        <p class="feat-desc">A minimal tab bar, a sidebar for your games and environments, and nothing else. Focused on the game, not the tooling around it.</p>
+      </div>
+
+      <div class="feat-card fade-in">
+        <svg class="feat-icon" viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="5" y="6" width="24" height="18" rx="2.5"/>
+          <rect x="11" y="24" width="12" height="3" rx="1"/>
+          <rect x="13" y="27" width="8" height="1.5" rx="0.75"/>
+          <path d="M10 15h14M10 19h9" opacity="0.5"/>
+        </svg>
+        <div class="feat-title">Windows native</div>
+        <p class="feat-desc">Built with Electron and shipped as a real desktop app. Runs natively on Windows — no browser extension required, no web tab.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- WAITLIST -->
+<section id="waitlist">
+  <div class="s-inner">
+    <div class="waitlist-card fade-in">
+      <div class="s-eyebrow" style="text-align:center;">Early access</div>
+      <h2 class="s-h2">Be the first<br>to get Silo</h2>
+      <p class="wl-sub">Early access is limited. Drop your email and we'll reach out when it's ready.</p>
+      <form class="wl-form" id="wl-form" novalidate>
+        <input
+          id="wl-email"
+          class="wl-input"
+          type="email"
+          placeholder="you@example.com"
+          required
+          autocomplete="email"
+        />
+        <button type="submit" class="wl-btn" id="wl-btn">Get Early Access</button>
+      </form>
+      <div class="wl-success" id="wl-success">You're on the list. We'll be in touch.</div>
+      <div class="wl-error" id="wl-error">Something went wrong. Please try again.</div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-inner">
+    <div class="footer-left">
+      <a href="#" class="footer-logo">
+        <svg width="17" height="17" viewBox="0 0 20 20" fill="none">
+          <rect x="1" y="1.5" width="18" height="5" rx="2" fill="#f0f0f0"/>
+          <rect x="1" y="7.5" width="18" height="5" rx="2" fill="#f0f0f0"/>
+          <rect x="1" y="13.5" width="18" height="5" rx="2" fill="#f0f0f0"/>
+        </svg>
+        <span class="footer-logo-name">Silo</span>
+      </a>
+      <span class="footer-copy">© 2026 Silo. All rights reserved.</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // Navbar scroll
+  const nav = document.getElementById('navbar');
+  addEventListener('scroll', () => {
+    nav.classList.toggle('scrolled', scrollY > 24);
+  }, { passive: true });
+
+  // Fade-in on scroll
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+        observer.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.08, rootMargin: '0px 0px -36px 0px' });
+  document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+  // Waitlist form
+  const form   = document.getElementById('wl-form');
+  const email  = document.getElementById('wl-email');
+  const btn    = document.getElementById('wl-btn');
+  const ok     = document.getElementById('wl-success');
+  const err    = document.getElementById('wl-error');
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    if (!email.value.trim()) return;
+    btn.disabled = true;
+    btn.textContent = 'Submitting…';
+    err.style.display = 'none';
+    try {
+      const res = await fetch('https://formspree.io/f/mwledoaj', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ email: email.value.trim() })
+      });
+      if (res.ok) {
+        form.style.display = 'none';
+        ok.style.display = 'block';
+      } else {
+        throw new Error();
+      }
+    } catch {
+      err.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Get Early Access';
+    }
+  });
+</script>
+
+</body>
+</html>
