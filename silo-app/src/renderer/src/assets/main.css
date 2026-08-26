@@ -770,15 +770,17 @@ button, [role="button"], .clickable, .tab, .game-row, .env-row {
 .settings-btn:hover { background: var(--surface); color: var(--text); border-color: var(--border); }
 .settings-btn:active { background: var(--surface-2); }
 
-/* ── Sidebar empty ─ compacted for balanced empty state (was 40/28) */
+/* ── Sidebar empty ─ GAMES empty per MASTER §8A: 44×44 tile + 13/600 +12/400, pad 40 16 */
 .sidebar-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   text-align: center;
   gap: 8px;
-  padding: 16px 16px 12px;
+  padding: 40px 16px;
+  flex: 1;
+  min-height: 160px;
 }
 .sidebar-empty--compact {
   padding: 12px 16px 10px;
@@ -1143,13 +1145,13 @@ button, [role="button"], .clickable, .tab, .game-row, .env-row {
   position: relative;
   z-index: 2;
   text-align: center;
-  padding: 32px 28px 28px;
+  padding: 28px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   box-shadow: 0 20px 48px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05);
-  max-width: 520px;
-  width: min(520px, calc(100% - 32px));
+  max-width: 360px;
+  width: min(360px, calc(100% - 32px));
 }
 
 .ws-hint-icon {
@@ -1166,8 +1168,8 @@ button, [role="button"], .clickable, .tab, .game-row, .env-row {
 }
 
 .ws-hint-title {
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--text);
   letter-spacing: -0.015em;
   line-height: 1.2;
@@ -1175,11 +1177,11 @@ button, [role="button"], .clickable, .tab, .game-row, .env-row {
 }
 
 .ws-hint-desc {
-  font-size: 13px;
+  font-size: 12.5px;
   color: var(--text-muted);
   line-height: 1.6;
   font-family: var(--font);
-  max-width: 380px;
+  max-width: 320px;
   font-weight: 400;
 }
 

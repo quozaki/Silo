@@ -609,41 +609,59 @@ export default function Sidebar({
               </div>
             </div>
           ) : selectedEnvs.length === 0 ? (
-            <div className="sidebar-empty sidebar-empty--compact">
-              <div className="sidebar-empty-icon" aria-hidden="true">
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                  <rect
-                    x="3"
-                    y="3"
-                    width="12"
-                    height="6"
-                    rx="1.5"
+            <>
+              <div className="sidebar-empty sidebar-empty--compact">
+                <div className="sidebar-empty-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                    <rect
+                      x="3"
+                      y="3"
+                      width="12"
+                      height="6"
+                      rx="1.5"
+                      stroke="currentColor"
+                      strokeWidth="1.3"
+                    />
+                    <rect
+                      x="3"
+                      y="10"
+                      width="12"
+                      height="6"
+                      rx="1.5"
+                      stroke="currentColor"
+                      strokeWidth="1.3"
+                      opacity="0.45"
+                    />
+                    <circle cx="6" cy="6" r="1" fill="currentColor" opacity="0.9" />
+                  </svg>
+                </div>
+                <div className="sidebar-empty-text">
+                  <span>No environments yet</span>
+                  <span>
+                    Add one for{' '}
+                    <strong style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
+                      {selectedGame.name}
+                    </strong>
+                  </span>
+                </div>
+              </div>
+              <button
+                className="add-env-btn"
+                onClick={() => onAddEnv(selectedGame.id)}
+                aria-label={`Add environment to ${selectedGame.name}`}
+                style={{ marginTop: 4 }}
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                  <path
+                    d="M6 2V10M2 6H10"
                     stroke="currentColor"
-                    strokeWidth="1.3"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
                   />
-                  <rect
-                    x="3"
-                    y="10"
-                    width="12"
-                    height="6"
-                    rx="1.5"
-                    stroke="currentColor"
-                    strokeWidth="1.3"
-                    opacity="0.45"
-                  />
-                  <circle cx="6" cy="6" r="1" fill="currentColor" opacity="0.9" />
                 </svg>
-              </div>
-              <div className="sidebar-empty-text">
-                <span>No environments yet</span>
-                <span>
-                  Add one for{' '}
-                  <strong style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
-                    {selectedGame.name}
-                  </strong>
-                </span>
-              </div>
-            </div>
+                Add environment
+              </button>
+            </>
           ) : (
             <>
               {filteredEnvs.map(renderEnvRow)}

@@ -62,7 +62,7 @@ export default function Workspace({
     )
   }
 
-  // Game selected but it has no environments → encourage creation
+  // Game selected but it has no environments → encourage creation (MASTER §8C tier 2 zero-env variant)
   if (selectedGame && envCount === 0) {
     return (
       <div className="workspace-empty" role="region" aria-label="Workspace">
@@ -91,11 +91,8 @@ export default function Workspace({
               <circle cx="6.5" cy="6" r="1" fill="currentColor" opacity="0.9" />
             </svg>
           </div>
-          <h2 className="ws-hint-title">{selectedGame.name} — no environments yet</h2>
-          <p className="ws-hint-desc">
-            Add an environment in the lower pane. Silo auto-assigns the least-used proxy and keeps
-            every account isolated.
-          </p>
+          <h2 className="ws-hint-title">Environments for {selectedGame.name}</h2>
+          <p className="ws-hint-desc">No environments yet — add one above.</p>
           <div className="ws-hint-action" aria-hidden="true">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
               <path
@@ -105,14 +102,19 @@ export default function Workspace({
                 strokeLinecap="round"
               />
             </svg>
-            <span>Add an environment below</span>
+            <span>Add an environment in the lower pane</span>
+          </div>
+          <div className="ws-hint-kbd" aria-hidden="true">
+            <span>Tip</span>
+            <kbd>Double-click</kbd>
+            <span>to rename</span>
           </div>
         </div>
       </div>
     )
   }
 
-  // Default: game selected, envs exist, but none open/selected → pick an env
+  // Default: game selected, envs exist, but none open/selected → pick an env (MASTER §8C tier 2 with envs)
   return (
     <div className="workspace-empty" role="region" aria-label="Workspace">
       <div className="ws-hint-card">
@@ -138,10 +140,10 @@ export default function Workspace({
           </svg>
         </div>
         <h2 className="ws-hint-title">
-          {selectedGame ? `Select an environment — ${selectedGame.name}` : 'Select an environment'}
+          {selectedGame ? `Environments for ${selectedGame.name}` : 'Select an environment'}
         </h2>
         <p className="ws-hint-desc">
-          Choose an environment in the lower pane to launch its isolated browser. Each runs in a
+          Choose an environment from the sidebar to launch its isolated browser. Each runs in a
           sealed partition — no cookies bleed.
         </p>
         <div className="ws-hint-action" aria-hidden="true">

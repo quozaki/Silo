@@ -17,8 +17,8 @@ export default function Hero() {
         <div className="pill fade-in">
           <span className="pill-dot"></span>Early Access · Windows only
         </div>
-        <h1 className="fade-in">Run every account in its own universe.</h1>
-        <p className="hero-sub fade-in">Silo gives each game account a fully isolated browser session — separate cookies, storage, and IP. Open ten accounts. Nothing crosses.</p>
+        <h1 className="fade-in">One place, many accounts — each completely isolated</h1>
+        <p className="hero-sub fade-in">One place, many accounts — each completely isolated. Silo gives each game account a sealed browser session with separate cookies, storage, and IP.</p>
         <div className="hero-ctas fade-in">
           <a href="#waitlist" className="btn-primary" onClick={handleWaitlistClick}>
             Join the Waitlist
