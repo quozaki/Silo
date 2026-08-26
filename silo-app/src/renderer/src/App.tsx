@@ -6,7 +6,6 @@ import TitleBar from './components/TitleBar'
 import { AddGameModal, AddEnvModal } from './components/Modals'
 import Settings, { ProxyEntry } from './components/Settings'
 import type { Game, Environment } from '../../shared/types'
-import siloIcon from './assets/icon.png'
 
 interface OpenTab {
   env: Environment
@@ -19,9 +18,9 @@ type Modal =
   | { type: 'settings' }
   | null
 
-const SIDEBAR_WIDTH = 224
+const SIDEBAR_WIDTH = 280
 const TITLEBAR_HEIGHT = 32
-const TAB_BAR_HEIGHT = 38
+const TAB_BAR_HEIGHT = 40
 
 export default function App(): JSX.Element {
   const [games, setGames] = useState<Game[]>([])
@@ -30,6 +29,7 @@ export default function App(): JSX.Element {
   const [activeEnvId, setActiveEnvId] = useState<string | null>(null)
   const [modal, setModal] = useState<Modal>(null)
   const [proxies, setProxies] = useState<ProxyEntry[]>([])
+  const [selectedGameId, setSelectedGameId] = useState<string | null>(null)
 
   // proxyColorMap: envId -> color (derived from proxy assignments, not state)
   const proxyColorMap = useMemo<Record<string, string>>(() => {
@@ -55,6 +55,11 @@ export default function App(): JSX.Element {
       envMap[game.id] = envs
     }
     setEnvironments(envMap)
+    setSelectedGameId((prev) => {
+      if (g.length === 0) return null
+      if (prev && g.find((x) => x.id === prev)) return prev
+      return g[0].id
+    })
   }, [])
 
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -122,6 +127,7 @@ export default function App(): JSX.Element {
   const handleSelectEnv = useCallback(
     async (env: Environment, game: Game) => {
       const bounds = getWorkspaceBounds()
+      setSelectedGameId(game.id)
       if (tabs.find((t) => t.env.id === env.id)) {
         await window.silo.showBrowser(env.id, bounds)
         setActiveEnvId(env.id)
@@ -137,10 +143,12 @@ export default function App(): JSX.Element {
   const handleSelectTab = useCallback(
     async (envId: string) => {
       const bounds = getWorkspaceBounds()
+      const tab = tabs.find((t) => t.env.id === envId)
+      if (tab) setSelectedGameId(tab.game.id)
       await window.silo.showBrowser(envId, bounds)
       setActiveEnvId(envId)
     },
-    [getWorkspaceBounds]
+    [tabs, getWorkspaceBounds]
   )
 
   const handleCloseTab = useCallback(
@@ -176,11 +184,24 @@ export default function App(): JSX.Element {
   // ── Game CRUD ──────────────────────────────────────────────────────────────
   const handleAddGame = useCallback(
     async (name: string, url: string) => {
+      const before = new Set(games.map((g) => g.id))
       await window.silo.createGame(name, url)
       await loadGames()
+      // select the newly created game on first paint
+      // loadGames already repopulated; pick the id that wasn't in `before`
+      // defer to next tick so state from loadGames has landed
+      setTimeout(async () => {
+        try {
+          const fresh = await window.silo.getGames()
+          const created = fresh.find((g) => !before.has(g.id))
+          if (created) setSelectedGameId(created.id)
+        } catch {
+          // noop
+        }
+      }, 0)
       await closeModal()
     },
-    [loadGames, closeModal]
+    [games, loadGames, closeModal]
   )
 
   const handleDeleteGame = useCallback(
@@ -194,6 +215,11 @@ export default function App(): JSX.Element {
       await loadGames()
       const remaining = tabs.filter((t) => t.game.id !== id)
       setTabs(remaining)
+      if (selectedGameId === id) {
+        // loadGames already queued a reselect to next available; override synchronously
+        const nextGame = games.find((g) => g.id !== id)
+        setSelectedGameId(nextGame ? nextGame.id : null)
+      }
       if (activeEnvId && deletedIds.has(activeEnvId)) {
         if (remaining.length > 0) {
           const next = remaining[remaining.length - 1]
@@ -205,7 +231,7 @@ export default function App(): JSX.Element {
         }
       }
     },
-    [environments, tabs, activeEnvId, loadGames, getWorkspaceBounds]
+    [environments, tabs, activeEnvId, selectedGameId, games, loadGames, getWorkspaceBounds]
   )
 
   // ── Environment CRUD ───────────────────────────────────────────────────────
@@ -261,6 +287,15 @@ export default function App(): JSX.Element {
 
   const openEnvIds = tabs.map((t) => t.env.id)
 
+  const selectedGame = useMemo(
+    () => games.find((g) => g.id === selectedGameId) ?? null,
+    [games, selectedGameId]
+  )
+  const selectedEnvs = useMemo(
+    () => (selectedGameId ? (environments[selectedGameId] ?? []) : []),
+    [environments, selectedGameId]
+  )
+
   return (
     <div className="app">
       <TitleBar />
@@ -271,6 +306,8 @@ export default function App(): JSX.Element {
           activeEnvId={activeEnvId}
           openEnvIds={openEnvIds}
           proxyColorMap={proxyColorMap}
+          selectedGameId={selectedGameId}
+          onSelectGame={setSelectedGameId}
           onSelectEnv={handleSelectEnv}
           onAddGame={() => openModal({ type: 'addGame' })}
           onDeleteGame={handleDeleteGame}
@@ -288,23 +325,126 @@ export default function App(): JSX.Element {
           {games.length === 0 ? (
             <div className="welcome">
               <div className="welcome-inner">
-                <div className="welcome-logo" style={{ padding: 0, overflow: 'hidden' }}>
-                  <img
-                    src={siloIcon}
-                    alt="Silo"
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                  />
+                <div className="welcome-mark" aria-hidden="true">
+                  <svg width="30" height="30" viewBox="0 0 28 28" fill="none">
+                    <rect
+                      x="4"
+                      y="6.5"
+                      width="20"
+                      height="4"
+                      rx="1.2"
+                      fill="currentColor"
+                      opacity="0.9"
+                    />
+                    <rect
+                      x="4"
+                      y="12"
+                      width="20"
+                      height="4"
+                      rx="1.2"
+                      fill="currentColor"
+                      opacity="0.65"
+                    />
+                    <rect
+                      x="4"
+                      y="17.5"
+                      width="20"
+                      height="4"
+                      rx="1.2"
+                      fill="currentColor"
+                      opacity="0.4"
+                    />
+                  </svg>
                 </div>
                 <h1 className="welcome-title">Welcome to Silo</h1>
                 <p className="welcome-subtitle">
-                  Launch multiple game accounts from one place — each completely isolated.
+                  One place, many accounts — each completely isolated. No cookies bleed, ever.
                 </p>
-                <button
-                  className="btn-primary welcome-cta"
-                  onClick={() => openModal({ type: 'addGame' })}
-                >
-                  Add your first game
-                </button>
+
+                <div className="welcome-actions">
+                  <button className="welcome-cta" onClick={() => openModal({ type: 'addGame' })}>
+                    Add your first game
+                  </button>
+                  <span className="welcome-kbd-hint">
+                    or press
+                    <kbd aria-hidden="true">⌘</kbd>
+                    <kbd aria-hidden="true">N</kbd>
+                  </span>
+                </div>
+
+                <div className="welcome-diagram" aria-hidden="true">
+                  <div className="wd-col">
+                    <span className="wd-col-label">Game</span>
+                    <div className="wd-cols-body">
+                      <div className="wd-game-card">
+                        <span className="wd-game-thumb">
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                            <path
+                              d="M1 3.5C1 2.67 1.67 2 2.5 2H5.5L7 3.5H11.5C12.33 3.5 13 4.17 13 5V10.5C13 11.33 12.33 12 11.5 12H2.5C1.67 12 1 11.33 1 10.5V3.5Z"
+                              stroke="currentColor"
+                              strokeWidth="1.2"
+                              fill="none"
+                            />
+                          </svg>
+                        </span>
+                        <span className="wd-game-name">StrategyCombat</span>
+                        <span className="wd-count-badge">3</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="wd-tree">
+                    <svg width="44" height="114" viewBox="0 0 44 114" fill="none">
+                      <path
+                        d="M0 57H10M10 17V97M10 17H44M10 57H44M10 97H44"
+                        stroke="currentColor"
+                        strokeWidth="1"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </div>
+                  <div className="wd-col">
+                    <span className="wd-col-label">Environments</span>
+                    <div className="wd-cols-body">
+                      <div className="wd-env-row">
+                        <span className="wd-dot wd-dot-open" />
+                        <span className="wd-env-name">Main</span>
+                        <span
+                          className="wd-proxy-dot"
+                          style={{ background: '#60a5fa', color: '#60a5fa' }}
+                        />
+                      </div>
+                      <div className="wd-env-row">
+                        <span className="wd-dot" />
+                        <span className="wd-env-name">Alt 1</span>
+                      </div>
+                      <div className="wd-env-row">
+                        <span className="wd-dot" />
+                        <span className="wd-env-name">Farm</span>
+                        <span
+                          className="wd-proxy-dot"
+                          style={{ background: '#fb923c', color: '#fb923c' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="welcome-footnote">
+                  Games are what you launch. Environments are who you launch as.
+                </p>
+                <div className="welcome-legend">
+                  <span className="welcome-legend-item">
+                    <i className="wd-dot wd-dot-open" />
+                    live environment
+                  </span>
+                  <span className="welcome-legend-item">
+                    <i
+                      className="wd-dot wd-proxy-dot"
+                      style={{ background: '#60a5fa', color: '#60a5fa' }}
+                    />
+                    assigned proxy
+                  </span>
+                </div>
               </div>
             </div>
           ) : (
@@ -312,10 +452,16 @@ export default function App(): JSX.Element {
               <TabBar
                 tabs={tabs}
                 activeEnvId={activeEnvId}
+                proxyColorMap={proxyColorMap}
                 onSelect={handleSelectTab}
                 onClose={handleCloseTab}
               />
-              <Workspace hasActiveBrowser={activeEnvId !== null && !modal} />
+              <Workspace
+                hasActiveBrowser={activeEnvId !== null && !modal}
+                selectedGame={selectedGame}
+                envCount={selectedEnvs.length}
+                gamesExist={games.length > 0}
+              />
             </>
           )}
         </div>

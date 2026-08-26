@@ -4,6 +4,7 @@ export default function Hero() {
   useFadeIn()
   return (
     <section id="hero">
+      <div className="hero-inner">
       <div className="pill fade-in"><span className="pill-dot"></span>Early access · Windows</div>
       <h1 className="fade-in">One app. Multiple accounts.<br />Zero overlap.</h1>
       <p className="hero-sub fade-in">Silo launches isolated browser sessions for each of your game accounts — different cookies, different storage, different IP. They never cross.</p>
@@ -101,6 +102,7 @@ export default function Hero() {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </section>
   )

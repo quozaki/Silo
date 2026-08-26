@@ -13,7 +13,7 @@ html { scroll-behavior: smooth; }
 
 body {
   font-family: 'Inter', system-ui, sans-serif;
-  background: var(--bg);
+  background: #050508;
   color: var(--text);
   line-height: 1.6;
   overflow-x: hidden;
@@ -110,6 +110,14 @@ nav.scrolled {
   justify-content: center;
   padding: 110px 6% 80px;
   text-align: center;
+}
+
+.hero-inner {
+  width: 100%;
+  max-width: 920px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 .pill {
   display: inline-flex;
