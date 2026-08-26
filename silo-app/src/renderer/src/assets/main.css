@@ -5,10 +5,10 @@
 }
 
 :root {
-  /* ── Surfaces ── */
-  --bg: #09090B;
+  /* ── Surfaces ── dark-only OLED graphite (#0A0A0A/#171717 family) — no light theme */
+  --bg: #09090B; /* #0A0A0A adjacent */
   --bg-workspace: #0C0C0E;
-  --bg-sidebar: #111113;
+  --bg-sidebar: #111113; /* #171717 family */
   --surface: #18181B;
   --surface-2: #1F1F23;
   --surface-hover: #27272A;
@@ -785,9 +785,9 @@ button, [role="button"], .clickable, .tab, .game-row, .env-row {
   gap: 8px;
 }
 .sidebar-empty-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
   background: var(--surface);
   border: 1px solid var(--border);
   display: flex;
@@ -796,8 +796,8 @@ button, [role="button"], .clickable, .tab, .game-row, .env-row {
   color: var(--text-dim);
 }
 .sidebar-empty--compact .sidebar-empty-icon {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 8px;
 }
 .sidebar-empty-text {

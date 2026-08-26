@@ -4,17 +4,31 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../build/icon.png?asset'
 import { initDB } from './db'
 import { registerIPC } from './ipc'
+import { openViews } from './views'
 
 type ViewBounds = { x: number; y: number; width: number; height: number }
-
-// Track open browser views: envId -> WebContentsView
-const openViews = new Map<string, WebContentsView>()
 
 let mainWindow: BrowserWindow
 let windowIpcRegistered = false
 
+// ── Workspace geometry (must match renderer App.tsx constants) ────────────────
+const SIDEBAR_WIDTH = 280 // fixed per design-system
+const TITLEBAR_HEIGHT = 32
+const TABBAR_HEIGHT = 40
+const WORKSPACE_Y = TITLEBAR_HEIGHT + TABBAR_HEIGHT // 72
+
+function getWorkspaceBounds(): ViewBounds {
+  // TitleBar 32 + TabBar 40 + Sidebar 280  =>  {x:280, y:72, w:innerWidth-280, h:innerHeight-72}
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return { x: SIDEBAR_WIDTH, y: WORKSPACE_Y, width: 1000, height: 600 }
+  }
+  const [w, h] = mainWindow.getContentSize()
+  return { x: SIDEBAR_WIDTH, y: WORKSPACE_Y, width: w - SIDEBAR_WIDTH, height: h - WORKSPACE_Y }
+}
+
 function hideAllViews(): void {
   // Defensive: detach every child currently attached, not just those in the Map
+  if (!mainWindow || mainWindow.isDestroyed()) return
   for (const child of [...mainWindow.contentView.children]) {
     try {
       mainWindow.contentView.removeChildView(child as WebContentsView)
@@ -24,12 +38,13 @@ function hideAllViews(): void {
   }
 }
 
-function showView(envId: string, bounds: ViewBounds): void {
+function showView(envId: string, bounds?: ViewBounds): void {
   const view = openViews.get(envId)
   if (!view) return
+  const b = bounds && bounds.x === SIDEBAR_WIDTH && bounds.y === WORKSPACE_Y ? bounds : getWorkspaceBounds()
   hideAllViews()
   mainWindow.contentView.addChildView(view)
-  view.setBounds(bounds)
+  view.setBounds(b)
   // Paranoia: ensure no other view stayed attached (race)
   for (const child of [...mainWindow.contentView.children]) {
     if (child !== view) {
@@ -83,6 +98,7 @@ function registerWindowIpc(): void {
       }
       pendingLaunches.add(envId)
       try {
+        // session.fromPartition('persist:silo-'+uuid) per env — isolated storage + proxy
         const ses = session.fromPartition(partition)
         await applyProxy(ses, proxy)
 
@@ -102,9 +118,31 @@ function registerWindowIpc(): void {
           }
         })
 
+        // Avoid white flash: dark background until first paint
+        try {
+          ;(view as unknown as { setBackgroundColor?: (c: string) => void }).setBackgroundColor?.('#09090B')
+        } catch {
+          // ignore — View may not support setBackgroundColor on some Electron versions
+        }
+        try {
+          ;(view.webContents as unknown as { setBackgroundColor?: (c: string) => void }).setBackgroundColor?.('#09090B')
+        } catch {
+          // ignore
+        }
+
         hideAllViews()
         mainWindow.contentView.addChildView(view)
-        view.setBounds(bounds)
+        // Defensive: always use computed workspace bounds (x:280 y:72 w:innerWidth-280 h:innerHeight-72)
+        const targetBounds = getWorkspaceBounds()
+        // Validate caller-provided bounds matches expected geometry — if not, use computed
+        const useBounds =
+          bounds.x === SIDEBAR_WIDTH &&
+          bounds.y === WORKSPACE_Y &&
+          bounds.width === targetBounds.width &&
+          bounds.height === targetBounds.height
+            ? bounds
+            : targetBounds
+        view.setBounds(useBounds)
         await view.webContents.loadURL(url)
         openViews.set(envId, view)
       } finally {
@@ -131,14 +169,32 @@ function registerWindowIpc(): void {
     } catch {
       // View may already have been removed
     }
-    view.webContents.close()
+    try {
+      view.webContents.close()
+    } catch {
+      // already closed
+    }
     openViews.delete(envId)
   })
 
   ipcMain.handle('browser:resize', (_, envId: string, bounds: ViewBounds) => {
     if (typeof envId !== 'string' || !/^[0-9a-f-]{36}$/.test(envId)) return
     const view = openViews.get(envId)
-    if (view) view.setBounds(bounds)
+    if (!view) return
+    // Defensive: ignore stale/typo bounds, always set to computed workspace bounds on resize
+    const computed = getWorkspaceBounds()
+    const useBounds =
+      bounds && typeof bounds.x === 'number' && bounds.x === SIDEBAR_WIDTH && bounds.y === WORKSPACE_Y
+        ? bounds
+        : computed
+    // setBounds is the resize path — no detach needed, just update geometry
+    view.setBounds(useBounds)
+    // If the view is the active one but was detached (e.g. modal hide), re-attach defensively
+    const isAttached = [...mainWindow.contentView.children].includes(view as unknown as typeof mainWindow.contentView.children[number])
+    if (!isAttached) {
+      // Only re-attach if this env is supposed to be visible — caller will showView next
+      // Don't auto-attach here; just ensure bounds are fresh for next showView
+    }
   })
 
   ipcMain.handle('browser:openIds', () => {
@@ -206,6 +262,11 @@ function createWindow(): void {
       // ignore invalid URL
     }
     return { action: 'deny' }
+  })
+
+  // Never allow main window to navigate away (file:// SPA only)
+  mainWindow.webContents.on('will-navigate', (e) => {
+    e.preventDefault()
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {

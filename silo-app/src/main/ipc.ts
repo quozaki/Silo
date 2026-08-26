@@ -15,6 +15,7 @@ import {
   getEnvironmentPartition,
   deleteEnvironment
 } from './db'
+import { removeViewForPartition, removeViewsForPartitions } from './views'
 
 export function registerIPC(): void {
   // ── Games ──────────────────────────────────────────────────────────────────
@@ -38,9 +39,18 @@ export function registerIPC(): void {
   ipcMain.handle('games:rename', (_, id: string, name: string) => renameGame(id, name))
   ipcMain.handle('games:delete', async (_, id: string) => {
     const partitions = deleteGame(id)
+    // view.remove on delete + clearStorageData — prevent leaked views
+    try {
+      removeViewsForPartitions(partitions)
+    } catch {
+      // ignore
+    }
     await Promise.all(
       partitions.map((p) =>
-        session.fromPartition(p).clearStorageData({ storages: ['cookies', 'localstorage', 'indexdb'] })
+        session
+          .fromPartition(p)
+          .clearStorageData({ storages: ['cookies', 'localstorage', 'indexdb', 'cachestorage', 'shadercache', 'serviceworkers'] })
+          .catch(() => {})
       )
     )
   })
@@ -80,9 +90,22 @@ export function registerIPC(): void {
   ipcMain.handle('envs:delete', async (_, id: string) => {
     const partition = deleteEnvironment(id)
     if (partition) {
+      // view.remove + clearStorageData — prevent leaked views & storage bleed
+      try {
+        removeViewForPartition(partition)
+      } catch {
+        // ignore
+      }
       await session
         .fromPartition(partition)
-        .clearStorageData({ storages: ['cookies', 'localstorage', 'indexdb'] })
+        .clearStorageData({ storages: ['cookies', 'localstorage', 'indexdb', 'cachestorage', 'shadercache', 'serviceworkers'] })
+        .catch(() => {})
+      // Reset proxy for the partition to direct to avoid proxy leak into future envs reusing same partition string
+      try {
+        await session.fromPartition(partition).setProxy({ mode: 'direct' })
+      } catch {
+        // ignore
+      }
     }
   })
 
