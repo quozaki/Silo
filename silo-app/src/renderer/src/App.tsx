@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback, useMemo, type JSX } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, type JSX } from 'react'
 import Sidebar from './components/Sidebar'
 import TabBar from './components/TabBar'
 import Workspace from './components/Workspace'
 import TitleBar from './components/TitleBar'
 import { AddGameModal, AddEnvModal } from './components/Modals'
 import Settings, { ProxyEntry } from './components/Settings'
+import SpecularButton from './components/SpecularButton'
 import type { Game, Environment } from '../../shared/types'
 
 interface OpenTab {
@@ -30,6 +31,7 @@ export default function App(): JSX.Element {
   const [modal, setModal] = useState<Modal>(null)
   const [proxies, setProxies] = useState<ProxyEntry[]>([])
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null)
+  const creatingEnvRef = useRef(false)
 
   // proxyColorMap: envId -> color (derived from proxy assignments, not state)
   const proxyColorMap = useMemo<Record<string, string>>(() => {
@@ -237,11 +239,16 @@ export default function App(): JSX.Element {
   // ── Environment CRUD ───────────────────────────────────────────────────────
   const handleAddEnv = useCallback(
     async (gameId: string, name: string) => {
-      // Auto-assign proxy
-      const proxy = getNextProxy()
-      await window.silo.createEnvironment(gameId, name, proxy?.value ?? null)
-      await loadGames()
-      await closeModal()
+      if (creatingEnvRef.current) return
+      creatingEnvRef.current = true
+      try {
+        const proxy = getNextProxy()
+        await window.silo.createEnvironment(gameId, name, proxy?.value ?? null)
+        await loadGames()
+        await closeModal()
+      } finally {
+        creatingEnvRef.current = false
+      }
     },
     [loadGames, closeModal, getNextProxy]
   )
@@ -323,10 +330,10 @@ export default function App(): JSX.Element {
 
         <div className="main-area">
           {games.length === 0 ? (
-            <div className="welcome">
+            <div className="welcome" role="region" aria-label="Welcome">
               <div className="welcome-inner">
                 <div className="welcome-mark" aria-hidden="true">
-                  <svg width="30" height="30" viewBox="0 0 28 28" fill="none">
+                  <svg width="30" height="30" viewBox="0 0 28 28" fill="none" aria-hidden="true">
                     <rect
                       x="4"
                       y="6.5"
@@ -362,10 +369,28 @@ export default function App(): JSX.Element {
                 </p>
 
                 <div className="welcome-actions">
-                  <button className="welcome-cta" onClick={() => openModal({ type: 'addGame' })}>
+                  <SpecularButton
+                    className="welcome-cta"
+                    radius={8}
+                    tint="#FAFAFA"
+                    tintOpacity={1}
+                    textColor="#09090B"
+                    lineColor="#ffffff"
+                    baseColor="#27272A"
+                    intensity={0.9}
+                    shineSize={12}
+                    shineFade={36}
+                    thickness={1.1}
+                    speed={0.28}
+                    followMouse={true}
+                    proximity={250}
+                    size="md"
+                    aria-label="Add your first game"
+                    onClick={() => openModal({ type: 'addGame' })}
+                  >
                     Add your first game
-                  </button>
-                  <span className="welcome-kbd-hint">
+                  </SpecularButton>
+                  <span className="welcome-kbd-hint" aria-label="Keyboard shortcut Command N">
                     or press
                     <kbd aria-hidden="true">⌘</kbd>
                     <kbd aria-hidden="true">N</kbd>

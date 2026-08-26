@@ -1,7 +1,9 @@
-import { useFadeIn } from '../hooks/useFadeIn'
+"use client";
+
+import { useFadeIn } from "@/hooks/useFadeIn";
 
 export default function HowItWorks() {
-  useFadeIn()
+  useFadeIn();
   return (
     <section id="how">
       <div className="s-inner">
@@ -10,21 +12,21 @@ export default function HowItWorks() {
         <div className="steps-grid">
           <div className="step fade-in">
             <div className="step-num">01</div>
-            <div className="step-title">Add your games</div>
-            <p className="step-desc">Pick from the built-in catalog of popular strategy games, or enter any URL to run a site inside its own isolated context.</p>
+            <div className="step-title">Pick a game</div>
+            <p className="step-desc">Choose from the built-in catalog of browser strategy games, or paste any URL. Silo handles the rest.</p>
           </div>
           <div className="step fade-in">
             <div className="step-num">02</div>
             <div className="step-title">Create environments</div>
-            <p className="step-desc">Each environment is a completely isolated browser identity — its own cookies, storage, cache, and optionally its own proxy.</p>
+            <p className="step-desc">Each environment is a sealed browser identity. Different cookies, different storage, different IP. Completely separate.</p>
           </div>
           <div className="step fade-in">
             <div className="step-num">03</div>
             <div className="step-title">Launch and play</div>
-            <p className="step-desc">Open multiple accounts simultaneously, each on its own IP. Switch between them instantly. Nothing ever crosses between sessions.</p>
+            <p className="step-desc">Click an environment to open it. Switch between accounts instantly. Nothing ever leaks between sessions.</p>
           </div>
         </div>
       </div>
     </section>
-  )
+  );
 }

@@ -4,3 +4,14 @@ out
 .DS_Store
 .eslintcache
 *.log*
+
+build/
+release/
+.venv/
+.vscode/
+.idea/
+*.asar
+.env
+.env.local
+coverage/
+

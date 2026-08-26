@@ -1,6 +1,6 @@
 import { app, session } from 'electron'
 import { join } from 'path'
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'fs'
 import initSqlJs, { Database } from 'sql.js'
 
 let db: Database
@@ -83,7 +83,9 @@ export async function initDB(): Promise<void> {
         // Clear isolated storage for those partitions (best effort)
         for (const p of partitions) {
           try {
-            await session.fromPartition(p).clearStorageData()
+            await session
+              .fromPartition(p)
+              .clearStorageData({ storages: ['cookies', 'localstorage', 'indexdb'] })
           } catch {
             // ignore
           }
@@ -104,7 +106,9 @@ export function persist(): void {
     const DB_PATH = getDBPath()
     const dir = app.getPath('userData')
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-    writeFileSync(DB_PATH, buffer)
+    const tmpPath = `${DB_PATH}.tmp`
+    writeFileSync(tmpPath, buffer)
+    renameSync(tmpPath, DB_PATH)
   } catch (err) {
     console.error('Failed to persist DB:', err)
   }
@@ -168,6 +172,11 @@ export function createEnvironment(
   partition: string,
   proxy: string | null
 ): void {
+  const gStmt = db.prepare('SELECT id FROM games WHERE id = ?')
+  gStmt.bind([gameId])
+  const hasGame = gStmt.step()
+  gStmt.free()
+  if (!hasGame) throw new Error('Game not found for environment')
   db.run('INSERT INTO environments (id, game_id, name, partition, proxy) VALUES (?, ?, ?, ?, ?)', [
     id,
     gameId,
@@ -186,6 +195,18 @@ export function renameEnvironment(id: string, name: string): void {
 export function setEnvironmentProxy(id: string, proxy: string | null): void {
   db.run('UPDATE environments SET proxy = ? WHERE id = ?', [proxy, id])
   persist()
+}
+
+export function getEnvironmentPartition(id: string): string | null {
+  const stmt = db.prepare('SELECT partition FROM environments WHERE id = ?')
+  stmt.bind([id])
+  let partition: string | null = null
+  if (stmt.step()) {
+    const row = stmt.getAsObject() as { partition?: unknown }
+    if (typeof row.partition === 'string') partition = row.partition
+  }
+  stmt.free()
+  return partition
 }
 
 export function deleteEnvironment(id: string): string | null {

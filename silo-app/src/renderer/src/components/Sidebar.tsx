@@ -1,6 +1,7 @@
 import { useState, useMemo, type JSX } from 'react'
 import type { Game, Environment } from '../../../shared/types'
 import { GAME_CATALOG } from './Modals'
+import SpecularButton from './SpecularButton'
 
 interface Props {
   games: Game[]
@@ -38,6 +39,7 @@ export default function Sidebar({
   onRenameEnv
 }: Props): JSX.Element {
   const [search, setSearch] = useState('')
+  const [gamesCollapsed, setGamesCollapsed] = useState(false)
   const [editingGameId, setEditingGameId] = useState<string | null>(null)
   const [editingGameDraft, setEditingGameDraft] = useState('')
   const [editingEnvId, setEditingEnvId] = useState<string | null>(null)
@@ -299,17 +301,11 @@ export default function Sidebar({
           {isOpen ? 'Live' : 'Idle'}
         </span>
         <span className="env-indicators" aria-hidden="true">
+          {/* trailing proxy dot only when live dot not already wearing proxy color (spec §8A) */}
           {proxyColor && !dotUsesProxy && (
             <span
               className="env-proxy-dot"
               style={{ background: proxyColor, color: proxyColor }}
-              title={`Proxy ${proxyColor}`}
-            />
-          )}
-          {proxyColor && dotUsesProxy && (
-            <span
-              className="env-proxy-dot"
-              style={{ background: proxyColor, color: proxyColor, opacity: 0.95 }}
               title={`Proxy ${proxyColor}`}
             />
           )}
@@ -387,9 +383,29 @@ export default function Sidebar({
         )}
       </div>
 
-      {/* GAMES — top scroll region */}
-      <section className="sidebar-section sidebar-section--games" aria-label="Games">
+      {/* GAMES — top scroll region 42% scroll, collapsible */}
+      <section
+        className={`sidebar-section sidebar-section--games ${gamesCollapsed ? 'collapsed' : ''}`}
+        aria-label="Games"
+      >
         <div className="sidebar-section-header">
+          <button
+            className="sidebar-collapse-btn"
+            onClick={() => setGamesCollapsed((v) => !v)}
+            aria-label={gamesCollapsed ? 'Expand games' : 'Collapse games'}
+            aria-expanded={!gamesCollapsed}
+            title={gamesCollapsed ? 'Expand' : 'Collapse'}
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+              <path
+                d="M2 3L5 6L8 3"
+                stroke="currentColor"
+                strokeWidth="1.3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
           <span className="sidebar-section-title">GAMES</span>
           <span
             className="count-pill"
@@ -422,7 +438,7 @@ export default function Sidebar({
           aria-multiselectable={false}
         >
           {games.length === 0 ? (
-            <div className="sidebar-empty">
+            <div className="sidebar-empty" role="status" aria-live="polite">
               <div className="sidebar-empty-icon" aria-hidden="true">
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                   <path
@@ -444,6 +460,27 @@ export default function Sidebar({
                 <span>No games yet</span>
                 <span>Games you add will appear here</span>
               </div>
+              <SpecularButton
+                size="sm"
+                radius={8}
+                tint="#FAFAFA"
+                tintOpacity={1}
+                textColor="#09090B"
+                lineColor="#ffffff"
+                baseColor="#27272A"
+                intensity={0.9}
+                shineSize={12}
+                shineFade={36}
+                thickness={1.1}
+                speed={0.28}
+                followMouse={true}
+                proximity={250}
+                aria-label="Add your first game"
+                onClick={onAddGame}
+                style={{ marginTop: 8, fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600, letterSpacing: '-0.01em' } as React.CSSProperties}
+              >
+                Add Game
+              </SpecularButton>
             </div>
           ) : filteredGames.length === 0 ? (
             <div className="sidebar-empty">
@@ -477,7 +514,7 @@ export default function Sidebar({
           <div className="envs-header-text">
             <span className="sidebar-section-title">ENVIRONMENTS</span>
             <span
-              className="envs-subtitle"
+              className={`envs-subtitle ${!selectedGame ? 'envs-subtitle--empty' : ''}`}
               title={
                 selectedGame
                   ? `${selectedGame.name} · ${selectedEnvs.length} environments`

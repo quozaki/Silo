@@ -71,6 +71,11 @@ function registerWindowIpc(): void {
       proxy: string | null,
       bounds: ViewBounds
     ): Promise<void> => {
+      if (typeof envId !== 'string' || !/^[0-9a-f-]{36}$/.test(envId)) return
+      if (typeof partition !== 'string' || partition !== `persist:silo-${envId}`) return
+      if (typeof url !== 'string' || !/^https?:\/\/.+/.test(url) || url.length > 2048) return
+      if (proxy !== null && (typeof proxy !== 'string' || !/^(socks5|socks4|http):\/\/.+/i.test(proxy))) return
+      if (!bounds || typeof bounds.x !== 'number' || typeof bounds.y !== 'number' || typeof bounds.width !== 'number' || typeof bounds.height !== 'number') return
       if (pendingLaunches.has(envId)) return
       if (openViews.has(envId)) {
         showView(envId, bounds)
@@ -90,8 +95,10 @@ function registerWindowIpc(): void {
         const view = new WebContentsView({
           webPreferences: {
             session: ses,
+            sandbox: true,
+            contextIsolation: true,
             nodeIntegration: false,
-            contextIsolation: true
+            webSecurity: true
           }
         })
 
@@ -107,6 +114,7 @@ function registerWindowIpc(): void {
   )
 
   ipcMain.handle('browser:show', (_, envId: string, bounds: ViewBounds) => {
+    if (typeof envId !== 'string' || !/^[0-9a-f-]{36}$/.test(envId)) return
     showView(envId, bounds)
   })
 
@@ -115,6 +123,7 @@ function registerWindowIpc(): void {
   })
 
   ipcMain.handle('browser:close', (_, envId: string) => {
+    if (typeof envId !== 'string' || !/^[0-9a-f-]{36}$/.test(envId)) return
     const view = openViews.get(envId)
     if (!view) return
     try {
@@ -127,6 +136,7 @@ function registerWindowIpc(): void {
   })
 
   ipcMain.handle('browser:resize', (_, envId: string, bounds: ViewBounds) => {
+    if (typeof envId !== 'string' || !/^[0-9a-f-]{36}$/.test(envId)) return
     const view = openViews.get(envId)
     if (view) view.setBounds(bounds)
   })
@@ -158,11 +168,14 @@ function createWindow(): void {
     autoHideMenuBar: true,
     titleBarStyle: 'hidden',
     titleBarOverlay: false,
-    backgroundColor: '#0e0e0e',
+    backgroundColor: '#09090B',
     icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: true
     }
   })
 
@@ -186,7 +199,12 @@ function createWindow(): void {
   mainWindow.on('unmaximize', () => mainWindow.webContents.send('window:maximizeChange', false))
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    try {
+      const u = new URL(details.url)
+      if (u.protocol === 'http:' || u.protocol === 'https:') shell.openExternal(details.url)
+    } catch {
+      // ignore invalid URL
+    }
     return { action: 'deny' }
   })
 

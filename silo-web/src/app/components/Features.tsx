@@ -1,12 +1,15 @@
-import { useFadeIn } from '../hooks/useFadeIn'
+﻿"use client";
+
+import { useFadeIn } from "@/hooks/useFadeIn";
 
 export default function Features() {
-  useFadeIn()
+  useFadeIn();
   return (
     <section id="features">
       <div className="s-inner">
         <div className="s-eyebrow fade-in">Features</div>
-        <h2 className="s-h2 fade-in">Built for account managers<br />who don't want surprises</h2>
+        <h2 className="s-h2 fade-in">Everything isolated. Nothing shared.</h2>
+        <p className="s-sub fade-in">Six reasons Silo works where browser profiles don&apos;t.</p>
         <div className="feat-grid">
           <div className="feat-card fade-in">
             <svg className="feat-icon" viewBox="0 0 34 34" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
@@ -83,5 +86,5 @@ export default function Features() {
         </div>
       </div>
     </section>
-  )
+  );
 }

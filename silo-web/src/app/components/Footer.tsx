@@ -1,4 +1,6 @@
-import { useFadeIn } from '../hooks/useFadeIn'
+﻿"use client";
+
+import { useFadeIn } from '@/hooks/useFadeIn'
 
 export default function Footer() {
   useFadeIn()
@@ -16,7 +18,9 @@ export default function Footer() {
           </a>
           <span className="footer-copy">© 2026 Silo. All rights reserved.</span>
         </div>
+        <div className="footer-right">Built on Electron</div>
       </div>
     </footer>
   )
 }
+

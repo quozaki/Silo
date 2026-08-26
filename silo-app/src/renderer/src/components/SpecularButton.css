@@ -25,7 +25,9 @@
     0 8px 24px rgba(0, 0, 0, 0.25);
   cursor: pointer;
   outline: none;
-  transition: transform 0.15s ease;
+  transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  overflow: hidden;
+  isolation: isolate;
 }
 
 .specular-button:active {
@@ -35,6 +37,10 @@
 .specular-button:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--sb-text-color) 60%, transparent);
   outline-offset: 3px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.25),
+    0 0 0 4px rgba(99, 102, 241, 0.35);
 }
 
 .specular-button:disabled {
@@ -78,4 +84,108 @@
 .specular-button__label {
   position: relative;
   z-index: 2;
+}
+
+/* ── CSS fallback when WebGL unavailable or prefers-reduced-motion ── */
+.specular-button--fallback {
+  /* subtle static rim approximating the OGL highlight */
+  border: 1px solid color-mix(in srgb, var(--sb-text-color) 12%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03),
+    0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.specular-button--fallback::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255,255,255,0.16) 0%, transparent 42%, transparent 58%, rgba(255,255,255,0.08) 100%);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 1;
+  transition: opacity 0.2s ease;
+}
+
+.specular-button--fallback:hover::after {
+  opacity: 0.85;
+}
+
+/* ── Welcome variants ── */
+/* Primary white CTA .welcome-cta — inverted white on dark OLED */
+.specular-button.welcome-cta {
+  background: #FAFAFA;
+  color: #09090B;
+  border: 1px solid #FAFAFA;
+  border-radius: 8px;
+  padding: 12px 28px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font, 'Inter', sans-serif);
+  letter-spacing: -0.01em;
+  line-height: 1;
+  min-height: 42px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2), 0 4px 12px rgba(0,0,0,0.15);
+  --sb-tint: #FAFAFA;
+  --sb-tint-opacity: 1;
+  --sb-text-color: #09090B;
+  --sb-radius: 8px;
+}
+
+.specular-button.welcome-cta:hover:not(:disabled) {
+  background: #E4E4E7;
+  border-color: #E4E4E7;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2), 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.specular-button.welcome-cta:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2), 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.specular-button.welcome-cta:focus-visible {
+  outline: 2px solid #6366F1;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(99,102,241,0.35), 0 1px 3px rgba(0,0,0,0.2);
+}
+
+/* 64px mark tile — decorative, not interactive */
+.specular-button.welcome-mark {
+  width: 64px;
+  height: 64px;
+  min-width: 64px;
+  min-height: 64px;
+  padding: 0;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #1F1F23 0%, #18181B 100%);
+  border: 1px solid #27272A;
+  color: #FAFAFA;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 12px rgba(0,0,0,0.3);
+  --sb-tint: #1F1F23;
+  --sb-tint-opacity: 1;
+  --sb-text-color: #FAFAFA;
+  --sb-radius: 16px;
+  cursor: default;
+  pointer-events: none;
+}
+
+.specular-button.welcome-mark:disabled {
+  opacity: 1;
+  transform: none;
+}
+
+.specular-button.welcome-mark .specular-button__label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+/* Ensure fallback sheen is subtler on dark tile */
+.specular-button.welcome-mark.specular-button--fallback::after {
+  background: linear-gradient(135deg, rgba(255,255,255,0.10) 0%, transparent 45%, transparent 55%, rgba(255,255,255,0.06) 100%);
+  opacity: 0.45;
 }

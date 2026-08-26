@@ -198,10 +198,13 @@ button, [role="button"], .clickable, .tab, .game-row, .env-row {
   color: #fff;
 }
 
-/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+/* ── Sidebar ───────────────────────────────────────────────────────────────
+   Spec §8A: 280px fixed, GAMES 42% / ENVIRONMENTS 58%, 52px workspace switcher bottom, dark #0A0A0A/#171717 */
 .sidebar {
   width: var(--sidebar-width);
   min-width: var(--sidebar-width);
+  max-width: var(--sidebar-width);
+  flex-shrink: 0;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border-subtle);
   display: flex;
@@ -211,7 +214,7 @@ button, [role="button"], .clickable, .tab, .game-row, .env-row {
 }
 
 .sidebar--split {
-  /* split IA: GAMES (top) + ENVIRONMENTS (bottom) */
+  /* split IA: GAMES (top 42%) + ENVIRONMENTS (bottom 58% filtered) */
 }
 
 /* Search — top chrome, sticky */
@@ -243,8 +246,8 @@ button, [role="button"], .clickable, .tab, .game-row, .env-row {
   color: var(--text-secondary);
   font-family: var(--font);
   caret-color: var(--accent);
-  padding: 7px 32px 7px 32px;
-  margin: 8px 0;
+  padding: 8px 32px 8px 32px;
+  margin: 10px 0;
   transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
 }
 
@@ -284,13 +287,20 @@ button, [role="button"], .clickable, .tab, .game-row, .env-row {
   min-height: 0;
 }
 .sidebar-section--games {
+  flex: 1 1 42%;
+  min-height: 120px;
+  max-height: none;
+}
+.sidebar-section--games.collapsed {
   flex: 0 0 auto;
-  max-height: 32%;
   min-height: 0;
 }
+.sidebar-section--games.collapsed .sidebar-scroll {
+  display: none;
+}
 .sidebar-section--envs {
-  flex: 1 1 auto;
-  min-height: 100px;
+  flex: 1 1 58%;
+  min-height: 120px;
 }
 
 .sidebar-section-header {
@@ -298,10 +308,10 @@ button, [role="button"], .clickable, .tab, .game-row, .env-row {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 14px 8px 16px;
+  padding: 14px 14px 14px 16px;
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
-  height: 40px;
+  height: 48px;
   background: var(--bg-sidebar);
 }
 
@@ -339,7 +349,7 @@ button, [role="button"], .clickable, .tab, .game-row, .env-row {
 .envs-subtitle {
   font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-muted);
   line-height: 1;
   white-space: nowrap;
@@ -350,6 +360,12 @@ button, [role="button"], .clickable, .tab, .game-row, .env-row {
   align-items: center;
   gap: 4px;
   min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+.envs-subtitle--empty {
+  font-style: italic;
+  font-weight: 500;
+  color: var(--text-dim);
 }
 .envs-subtitle-name {
   color: var(--text-secondary);
@@ -393,21 +409,48 @@ button, [role="button"], .clickable, .tab, .game-row, .env-row {
   box-shadow: none;
 }
 
+.sidebar-collapse-btn {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+.sidebar-collapse-btn:hover {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+.sidebar-collapse-btn svg {
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+.sidebar-section--games.collapsed .sidebar-collapse-btn svg {
+  transform: rotate(-90deg);
+}
+
 .sidebar-divider {
   height: 1px;
   background: var(--border-subtle);
   flex-shrink: 0;
+  margin: 0;
 }
 
-/* Scroll regions — tightened for compact density (was 8px/4px) */
+/* Scroll regions — spec: padding 8 gap 4, scrollbar 4px thumb --border */
 .sidebar-scroll {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 4px 6px;
+  padding: 8px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   min-height: 0;
 }
 .sidebar-scroll::-webkit-scrollbar { width: 4px; }
@@ -696,9 +739,13 @@ button, [role="button"], .clickable, .tab, .game-row, .env-row {
   border-style: solid;
 }
 
-/* Footer */
+/* Footer — Workspace switcher 52px bottom per task spec */
 .sidebar-bottom {
-  padding: 12px;
+  height: 52px;
+  min-height: 52px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
   border-top: 1px solid var(--border-subtle);
   flex-shrink: 0;
   background: var(--bg-sidebar);
@@ -1019,12 +1066,13 @@ button, [role="button"], .clickable, .tab, .game-row, .env-row {
   gap: 14px;
   position: relative;
   z-index: 2;
-  max-width: 360px;
+  max-width: 520px;
+  width: min(520px, calc(100% - 32px));
   padding: 32px 28px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  box-shadow: 0 16px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04);
+  box-shadow: 0 20px 48px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05);
 }
 
 .empty-logo {
@@ -1095,18 +1143,18 @@ button, [role="button"], .clickable, .tab, .game-row, .env-row {
   position: relative;
   z-index: 2;
   text-align: center;
-  padding: 28px 24px;
+  padding: 32px 28px 28px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  box-shadow: 0 16px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04);
-  max-width: 360px;
-  width: min(360px, calc(100% - 24px));
+  box-shadow: 0 20px 48px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05);
+  max-width: 520px;
+  width: min(520px, calc(100% - 32px));
 }
 
 .ws-hint-icon {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 10px;
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -1118,20 +1166,21 @@ button, [role="button"], .clickable, .tab, .game-row, .env-row {
 }
 
 .ws-hint-title {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 700;
   color: var(--text);
   letter-spacing: -0.015em;
-  line-height: 1.3;
+  line-height: 1.2;
   font-family: var(--font);
 }
 
 .ws-hint-desc {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-muted);
   line-height: 1.6;
   font-family: var(--font);
-  max-width: 300px;
+  max-width: 380px;
+  font-weight: 400;
 }
 
 .ws-hint-action {
@@ -1814,9 +1863,9 @@ button, [role="button"], .clickable, .tab, .game-row, .env-row {
   justify-content: center;
   height: 100%;
   background-color: var(--bg-workspace);
-  background-image: radial-gradient(circle, rgba(39,39,42,0.5) 1px, transparent 1px);
-  background-size: 24px 24px;
-  padding: 32px;
+  background-image: radial-gradient(circle, rgba(39,39,42,0.6) 1px, transparent 1px);
+  background-size: 22px 22px;
+  padding: 28px 32px;
   min-height: 0;
   position: relative;
   overflow: hidden;
@@ -1882,15 +1931,17 @@ button, [role="button"], .clickable, .tab, .game-row, .env-row {
   letter-spacing: -0.02em;
   line-height: 1.1;
   margin-bottom: 10px;
+  font-family: var(--font);
 }
 
 .welcome-subtitle {
-  font-size: 13.5px;
-  color: var(--text-muted);
+  font-size: 14px;
+  color: var(--text-secondary);
   line-height: 1.6;
   max-width: 360px;
   margin-bottom: 22px;
   font-weight: 400;
+  font-family: var(--font);
 }
 
 /* CTA row */
