@@ -9,6 +9,7 @@ import SpecularButton from './components/SpecularButton'
 import type { Game, Environment } from '../../shared/types'
 
 interface OpenTab {
+  sessionId: string
   env: Environment
   game: Game
 }
@@ -27,11 +28,16 @@ export default function App(): JSX.Element {
   const [games, setGames] = useState<Game[]>([])
   const [environments, setEnvironments] = useState<Record<string, Environment[]>>({})
   const [tabs, setTabs] = useState<OpenTab[]>([])
-  const [activeEnvId, setActiveEnvId] = useState<string | null>(null)
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [modal, setModal] = useState<Modal>(null)
   const [proxies, setProxies] = useState<ProxyEntry[]>([])
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null)
+  const [operationError, setOperationError] = useState<string | null>(null)
   const creatingEnvRef = useRef(false)
+
+  const reportError = useCallback((error: unknown): void => {
+    setOperationError(error instanceof Error && error.message ? error.message : 'The requested operation could not be completed.')
+  }, [])
 
   // proxyColorMap: envId -> color (derived from proxy assignments, not state)
   const proxyColorMap = useMemo<Record<string, string>>(() => {
@@ -39,7 +45,7 @@ export default function App(): JSX.Element {
     for (const envs of Object.values(environments)) {
       for (const env of envs) {
         if (env.proxy) {
-          const match = proxies.find((p) => p.value === env.proxy)
+          const match = proxies.find((p) => p.id === env.proxy)
           if (match) map[env.id] = match.color
         }
       }
@@ -53,8 +59,7 @@ export default function App(): JSX.Element {
     setGames(g)
     const envMap: Record<string, Environment[]> = {}
     for (const game of g) {
-      const envs = await window.silo.getEnvironments(game.id)
-      envMap[game.id] = envs
+      envMap[game.id] = await window.silo.getEnvironments(game.id)
     }
     setEnvironments(envMap)
     setSelectedGameId((prev) => {
@@ -66,19 +71,43 @@ export default function App(): JSX.Element {
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    void loadGames()
+    void loadGames().catch(reportError)
     void window.silo
       .loadProxies()
       .then(setProxies)
-      .catch(() => {})
-  }, [loadGames])
+      .catch(reportError)
+  }, [loadGames, reportError])
+
+  useEffect(() => {
+    return window.silo.onBrowserStateChange((event) => {
+      if (!['FAILED', 'CRASHED'].includes(event.state)) return
+      const sessionId = `${event.gameId}:${event.environmentId}`
+      setTabs((current) => current.filter((tab) => tab.sessionId !== sessionId))
+      setActiveSessionId((current) => (current === sessionId ? null : current))
+    })
+  }, [])
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // ── Proxy management ───────────────────────────────────────────────────────
-  const handleProxiesChange = useCallback((updated: ProxyEntry[]) => {
-    setProxies(updated)
-    void window.silo.saveProxies(updated)
-  }, [])
+  const handleProxyAdd = useCallback(async (proxy: { label: string; address: string; color: string }): Promise<void> => {
+    try {
+      await window.silo.addProxy(proxy)
+      setProxies(await window.silo.loadProxies())
+    } catch (error) {
+      reportError(error)
+      throw error
+    }
+  }, [reportError])
+
+  const handleProxyDelete = useCallback(async (id: string): Promise<void> => {
+    try {
+      await window.silo.removeProxy(id)
+      setProxies(await window.silo.loadProxies())
+    } catch (error) {
+      reportError(error)
+      throw error
+    }
+  }, [reportError])
 
   // Auto-assign next available proxy
   const getNextProxy = useCallback((): ProxyEntry | null => {
@@ -88,7 +117,7 @@ export default function App(): JSX.Element {
     const usage: Record<string, number> = {}
     for (const p of proxies) usage[p.id] = 0
     for (const env of allEnvs) {
-      const match = proxies.find((p) => p.value === env.proxy)
+      const match = proxies.find((p) => p.id === env.proxy)
       if (match) usage[match.id] = (usage[match.id] || 0) + 1
     }
     // Pick least used
@@ -111,187 +140,243 @@ export default function App(): JSX.Element {
   // ── Modal helpers ──────────────────────────────────────────────────────────
   const openModal = useCallback(
     async (m: Modal) => {
-      if (activeEnvId) await window.silo.hideAllBrowsers()
+      if (activeSessionId) await window.silo.hideAllBrowsers()
       setModal(m)
     },
-    [activeEnvId]
+    [activeSessionId]
   )
 
   const closeModal = useCallback(async () => {
     setModal(null)
-    if (activeEnvId) {
+    if (activeSessionId) {
       const bounds = getWorkspaceBounds()
-      await window.silo.showBrowser(activeEnvId, bounds)
+      const tab = tabs.find((item) => item.sessionId === activeSessionId)
+      if (tab) await window.silo.showBrowser(tab.game.id, tab.env.id, bounds)
     }
-  }, [activeEnvId, getWorkspaceBounds])
+  }, [activeSessionId, tabs, getWorkspaceBounds])
 
   // ── Launch environment ─────────────────────────────────────────────────────
   const handleSelectEnv = useCallback(
     async (env: Environment, game: Game) => {
-      const bounds = getWorkspaceBounds()
-      setSelectedGameId(game.id)
-      if (tabs.find((t) => t.env.id === env.id)) {
-        await window.silo.showBrowser(env.id, bounds)
-        setActiveEnvId(env.id)
-        return
+      try {
+        const bounds = getWorkspaceBounds()
+        setSelectedGameId(game.id)
+        const sessionId = `${game.id}:${env.id}`
+        if (tabs.find((t) => t.sessionId === sessionId)) {
+          await window.silo.showBrowser(game.id, env.id, bounds)
+          setActiveSessionId(sessionId)
+          return
+        }
+        await window.silo.launchBrowser(game.id, env.id, bounds)
+        setTabs((prev) => [...prev, { sessionId, env, game }])
+        setActiveSessionId(sessionId)
+      } catch (error) {
+        reportError(error)
       }
-      await window.silo.launchBrowser(env.id, env.partition, game.url, env.proxy ?? null, bounds)
-      setTabs((prev) => [...prev, { env, game }])
-      setActiveEnvId(env.id)
     },
-    [tabs, getWorkspaceBounds]
+    [tabs, getWorkspaceBounds, reportError]
   )
 
   const handleSelectTab = useCallback(
-    async (envId: string) => {
-      const bounds = getWorkspaceBounds()
-      const tab = tabs.find((t) => t.env.id === envId)
-      if (tab) setSelectedGameId(tab.game.id)
-      await window.silo.showBrowser(envId, bounds)
-      setActiveEnvId(envId)
-    },
-    [tabs, getWorkspaceBounds]
+      async (sessionId: string) => {
+        try {
+          const bounds = getWorkspaceBounds()
+          const tab = tabs.find((t) => t.sessionId === sessionId)
+          if (tab) setSelectedGameId(tab.game.id)
+          if (!tab) return
+          await window.silo.showBrowser(tab.game.id, tab.env.id, bounds)
+          setActiveSessionId(sessionId)
+        } catch (error) {
+          reportError(error)
+        }
+      },
+    [tabs, getWorkspaceBounds, reportError]
   )
 
   const handleCloseTab = useCallback(
-    async (envId: string) => {
-      await window.silo.closeBrowser(envId)
-      const remaining = tabs.filter((t) => t.env.id !== envId)
-      setTabs(remaining)
-      if (activeEnvId === envId) {
-        if (remaining.length > 0) {
-          const next = remaining[remaining.length - 1]
-          await window.silo.showBrowser(next.env.id, getWorkspaceBounds())
-          setActiveEnvId(next.env.id)
-        } else {
-          setActiveEnvId(null)
-          await window.silo.hideAllBrowsers()
+      async (sessionId: string) => {
+        try {
+          const tab = tabs.find((item) => item.sessionId === sessionId)
+          if (!tab) return
+          await window.silo.closeBrowser(tab.game.id, tab.env.id)
+          const remaining = tabs.filter((t) => t.sessionId !== sessionId)
+          setTabs(remaining)
+          if (activeSessionId === sessionId) {
+            if (remaining.length > 0) {
+              const next = remaining[remaining.length - 1]
+              await window.silo.showBrowser(next.game.id, next.env.id, getWorkspaceBounds())
+              setActiveSessionId(next.sessionId)
+            } else {
+              setActiveSessionId(null)
+              await window.silo.hideAllBrowsers()
+            }
+          }
+        } catch (error) {
+          reportError(error)
         }
-      }
     },
-    [activeEnvId, tabs, getWorkspaceBounds]
+    [activeSessionId, tabs, getWorkspaceBounds, reportError]
   )
 
   // ── Resize ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     const handleResize = async (): Promise<void> => {
-      if (activeEnvId && !modal) {
-        await window.silo.resizeBrowser(activeEnvId, getWorkspaceBounds())
+      const activeTab = tabs.find((tab) => tab.sessionId === activeSessionId)
+      if (activeTab && !modal) {
+        try {
+          await window.silo.resizeBrowser(activeTab.game.id, activeTab.env.id, getWorkspaceBounds())
+        } catch (error) {
+          reportError(error)
+        }
       }
     }
     window.addEventListener('resize', handleResize)
     return (): void => window.removeEventListener('resize', handleResize)
-  }, [activeEnvId, modal, getWorkspaceBounds])
+  }, [activeSessionId, tabs, modal, getWorkspaceBounds, reportError])
 
   // ── Game CRUD ──────────────────────────────────────────────────────────────
   const handleAddGame = useCallback(
     async (name: string, url: string) => {
-      const before = new Set(games.map((g) => g.id))
-      await window.silo.createGame(name, url)
-      await loadGames()
-      // select the newly created game on first paint
-      // loadGames already repopulated; pick the id that wasn't in `before`
-      // defer to next tick so state from loadGames has landed
-      setTimeout(async () => {
-        try {
-          const fresh = await window.silo.getGames()
-          const created = fresh.find((g) => !before.has(g.id))
-          if (created) setSelectedGameId(created.id)
-        } catch {
-          // noop
-        }
-      }, 0)
-      await closeModal()
+      try {
+        const before = new Set(games.map((g) => g.id))
+        await window.silo.createGame(name, url)
+        await loadGames()
+        // select the newly created game on first paint
+        // loadGames already repopulated; pick the id that wasn't in `before`
+        // defer to next tick so state from loadGames has landed
+        setTimeout(() => {
+          void window.silo
+            .getGames()
+            .then((fresh) => {
+              const created = fresh.find((g) => !before.has(g.id))
+              if (created) setSelectedGameId(created.id)
+            })
+            .catch(reportError)
+        }, 0)
+        await closeModal()
+      } catch (error) {
+        reportError(error)
+      }
     },
-    [games, loadGames, closeModal]
+    [games, loadGames, closeModal, reportError]
   )
 
   const handleDeleteGame = useCallback(
     async (id: string) => {
-      const envs = environments[id] || []
-      const deletedIds = new Set(envs.map((e) => e.id))
-      for (const env of envs) {
-        if (tabs.find((t) => t.env.id === env.id)) await window.silo.closeBrowser(env.id)
-      }
-      await window.silo.deleteGame(id)
-      await loadGames()
-      const remaining = tabs.filter((t) => t.game.id !== id)
-      setTabs(remaining)
-      if (selectedGameId === id) {
-        // loadGames already queued a reselect to next available; override synchronously
-        const nextGame = games.find((g) => g.id !== id)
-        setSelectedGameId(nextGame ? nextGame.id : null)
-      }
-      if (activeEnvId && deletedIds.has(activeEnvId)) {
-        if (remaining.length > 0) {
-          const next = remaining[remaining.length - 1]
-          await window.silo.showBrowser(next.env.id, getWorkspaceBounds())
-          setActiveEnvId(next.env.id)
-        } else {
-          setActiveEnvId(null)
-          await window.silo.hideAllBrowsers()
+      try {
+        const envs = environments[id] || []
+        const deletedIds = new Set(envs.map((e) => `${id}:${e.id}`))
+        for (const tab of tabs.filter((item) => item.game.id === id)) {
+          await window.silo.closeBrowser(tab.game.id, tab.env.id)
         }
+        await window.silo.deleteGame(id)
+        await loadGames()
+        const remaining = tabs.filter((t) => t.game.id !== id)
+        setTabs(remaining)
+        if (selectedGameId === id) {
+          const nextGame = games.find((g) => g.id !== id)
+          setSelectedGameId(nextGame ? nextGame.id : null)
+        }
+        if (activeSessionId && deletedIds.has(activeSessionId)) {
+          if (remaining.length > 0) {
+            const next = remaining[remaining.length - 1]
+            await window.silo.showBrowser(next.game.id, next.env.id, getWorkspaceBounds())
+            setActiveSessionId(next.sessionId)
+          } else {
+            setActiveSessionId(null)
+            await window.silo.hideAllBrowsers()
+          }
+        }
+      } catch (error) {
+        reportError(error)
       }
     },
-    [environments, tabs, activeEnvId, selectedGameId, games, loadGames, getWorkspaceBounds]
+    [environments, tabs, activeSessionId, selectedGameId, games, loadGames, getWorkspaceBounds, reportError]
   )
 
   // ── Environment CRUD ───────────────────────────────────────────────────────
   const handleAddEnv = useCallback(
-    async (gameId: string, name: string) => {
+    async (gameId: string, name: string, accountHint: string | null = null) => {
       if (creatingEnvRef.current) return
       creatingEnvRef.current = true
       try {
         const proxy = getNextProxy()
-        await window.silo.createEnvironment(gameId, name, proxy?.value ?? null)
+        await window.silo.createEnvironment(gameId, name, proxy?.id ?? null, accountHint)
         await loadGames()
         await closeModal()
+      } catch (error) {
+        reportError(error)
       } finally {
         creatingEnvRef.current = false
       }
     },
-    [loadGames, closeModal, getNextProxy]
+    [loadGames, closeModal, getNextProxy, reportError]
+  )
+
+  const handleSetEnvHint = useCallback(
+    async (id: string, hint: string | null) => {
+      try {
+        await window.silo.setEnvironmentAccountHint(id, hint)
+        await loadGames()
+      } catch (error) {
+        reportError(error)
+      }
+    },
+    [loadGames, reportError]
   )
 
   const handleDeleteEnv = useCallback(
     async (id: string) => {
-      const wasActive = activeEnvId === id
-      const remaining = tabs.filter((t) => t.env.id !== id)
-      if (tabs.find((t) => t.env.id === id)) {
-        await window.silo.closeBrowser(id)
-        setTabs(remaining)
-      }
-      await window.silo.deleteEnvironment(id)
-      await loadGames()
-      if (wasActive) {
-        if (remaining.length > 0) {
-          const next = remaining[remaining.length - 1]
-          await window.silo.showBrowser(next.env.id, getWorkspaceBounds())
-          setActiveEnvId(next.env.id)
-        } else {
-          setActiveEnvId(null)
+      try {
+        const wasActive = tabs.some((tab) => tab.sessionId === activeSessionId && tab.env.id === id)
+        const remaining = tabs.filter((t) => t.env.id !== id)
+        for (const tab of tabs.filter((item) => item.env.id === id)) {
+          await window.silo.closeBrowser(tab.game.id, tab.env.id)
         }
+        setTabs(remaining)
+        await window.silo.deleteEnvironment(id)
+        await loadGames()
+        if (wasActive) {
+          if (remaining.length > 0) {
+            const next = remaining[remaining.length - 1]
+            await window.silo.showBrowser(next.game.id, next.env.id, getWorkspaceBounds())
+            setActiveSessionId(next.sessionId)
+          } else {
+            setActiveSessionId(null)
+          }
+        }
+      } catch (error) {
+        reportError(error)
       }
     },
-    [tabs, activeEnvId, loadGames, getWorkspaceBounds]
+    [tabs, activeSessionId, loadGames, getWorkspaceBounds, reportError]
   )
 
   const handleRenameGame = useCallback(
     async (id: string, newName: string) => {
-      await window.silo.renameGame(id, newName)
-      await loadGames()
+      try {
+        await window.silo.renameGame(id, newName)
+        await loadGames()
+      } catch (error) {
+        reportError(error)
+      }
     },
-    [loadGames]
+    [loadGames, reportError]
   )
 
   const handleRenameEnv = useCallback(
     async (id: string, newName: string) => {
-      await window.silo.renameEnvironment(id, newName)
-      await loadGames()
+      try {
+        await window.silo.renameEnvironment(id, newName)
+        await loadGames()
+      } catch (error) {
+        reportError(error)
+      }
     },
-    [loadGames]
+    [loadGames, reportError]
   )
 
+  const activeEnvId = tabs.find((tab) => tab.sessionId === activeSessionId)?.env.id ?? null
   const openEnvIds = tabs.map((t) => t.env.id)
 
   const selectedGame = useMemo(
@@ -303,8 +388,80 @@ export default function App(): JSX.Element {
     [environments, selectedGameId]
   )
 
+  useEffect(() => {
+    const isTypingTarget = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false
+      return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
+    }
+
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      if (modal || isTypingTarget(e.target)) return
+
+      const modifier = e.ctrlKey || e.metaKey
+      if (modifier && e.key.toLowerCase() === 'n') {
+        e.preventDefault()
+        if (e.shiftKey) {
+          if (!selectedGame) return
+          void openModal({ type: 'addEnv', gameId: selectedGame.id, gameName: selectedGame.name })
+          return
+        }
+        void openModal({ type: 'addGame' })
+        return
+      }
+
+      if (modifier && e.key.toLowerCase() === 'w' && activeSessionId) {
+        e.preventDefault()
+        void handleCloseTab(activeSessionId)
+        return
+      }
+
+      if (tabs.length > 1 && e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        e.preventDefault()
+        const activeIndex = Math.max(
+          0,
+          tabs.findIndex((tab) => tab.sessionId === activeSessionId)
+        )
+        const direction = e.key === 'ArrowRight' ? 1 : -1
+        const nextIndex = (activeIndex + direction + tabs.length) % tabs.length
+        void handleSelectTab(tabs[nextIndex].sessionId)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return (): void => window.removeEventListener('keydown', handleKeyDown)
+  }, [activeSessionId, handleCloseTab, handleSelectTab, modal, openModal, selectedGame, tabs])
+
   return (
     <div className="app">
+      {operationError && (
+        <div
+          role="alert"
+          style={{
+            position: 'fixed',
+            top: 42,
+            right: 16,
+            zIndex: 1000,
+            maxWidth: 420,
+            padding: '10px 12px',
+            border: '1px solid #7f1d1d',
+            borderRadius: 8,
+            background: '#2a1111',
+            color: '#fecaca',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+            fontSize: 12
+          }}
+        >
+          <span>{operationError}</span>
+          <button
+            type="button"
+            onClick={() => setOperationError(null)}
+            aria-label="Dismiss error"
+            style={{ marginLeft: 12, color: 'inherit', background: 'transparent', border: 0, cursor: 'pointer' }}
+          >
+            ×
+          </button>
+        </div>
+      )}
       <TitleBar />
       <div className="app-body">
         <Sidebar
@@ -326,6 +483,7 @@ export default function App(): JSX.Element {
           onOpenSettings={() => openModal({ type: 'settings' })}
           onRenameGame={handleRenameGame}
           onRenameEnv={handleRenameEnv}
+          onSetEnvHint={handleSetEnvHint}
         />
 
         <div className="main-area">
@@ -363,9 +521,9 @@ export default function App(): JSX.Element {
                     />
                   </svg>
                 </div>
-                <h1 className="welcome-title">Welcome to Silo</h1>
+                <h1 className="welcome-title">Silo</h1>
                 <p className="welcome-subtitle">
-                  One place, many accounts — each completely isolated. No cookies bleed, ever.
+                  A focused DITOGAMES workspace for running isolated accounts with intent.
                 </p>
 
                 <div className="welcome-actions">
@@ -390,72 +548,33 @@ export default function App(): JSX.Element {
                   >
                     Add your first game
                   </SpecularButton>
-                  <span className="welcome-kbd-hint" aria-label="Keyboard shortcut Command N">
+                  <span className="welcome-kbd-hint" aria-label="Keyboard shortcut Control N">
                     or press
-                    <kbd aria-hidden="true">⌘</kbd>
+                    <kbd aria-hidden="true">Ctrl</kbd>
                     <kbd aria-hidden="true">N</kbd>
                   </span>
                 </div>
 
-                <div className="welcome-diagram" aria-hidden="true">
-                  <div className="wd-col">
-                    <span className="wd-col-label">Game</span>
-                    <div className="wd-cols-body">
-                      <div className="wd-game-card">
-                        <span className="wd-game-thumb">
-                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                            <path
-                              d="M1 3.5C1 2.67 1.67 2 2.5 2H5.5L7 3.5H11.5C12.33 3.5 13 4.17 13 5V10.5C13 11.33 12.33 12 11.5 12H2.5C1.67 12 1 11.33 1 10.5V3.5Z"
-                              stroke="currentColor"
-                              strokeWidth="1.2"
-                              fill="none"
-                            />
-                          </svg>
-                        </span>
-                        <span className="wd-game-name">StrategyCombat</span>
-                        <span className="wd-count-badge">3</span>
-                      </div>
-                    </div>
+                <div className="welcome-model" aria-hidden="true">
+                  <div className="welcome-model-cell welcome-model-cell--game">
+                    <span className="welcome-model-label">Games</span>
+                    <strong>Where I go</strong>
+                    <span>DITOGAMES sites</span>
                   </div>
-                  <div className="wd-tree">
-                    <svg width="44" height="114" viewBox="0 0 44 114" fill="none">
-                      <path
-                        d="M0 57H10M10 17V97M10 17H44M10 57H44M10 97H44"
-                        stroke="currentColor"
-                        strokeWidth="1"
-                        strokeLinecap="round"
-                      />
-                    </svg>
+                  <div className="welcome-model-cell welcome-model-cell--env">
+                    <span className="welcome-model-label">Environments</span>
+                    <strong>Who I am</strong>
+                    <span>Persistent identities</span>
                   </div>
-                  <div className="wd-col">
-                    <span className="wd-col-label">Environments</span>
-                    <div className="wd-cols-body">
-                      <div className="wd-env-row">
-                        <span className="wd-dot wd-dot-open" />
-                        <span className="wd-env-name">Main</span>
-                        <span
-                          className="wd-proxy-dot"
-                          style={{ background: '#60a5fa', color: '#60a5fa' }}
-                        />
-                      </div>
-                      <div className="wd-env-row">
-                        <span className="wd-dot" />
-                        <span className="wd-env-name">Alt 1</span>
-                      </div>
-                      <div className="wd-env-row">
-                        <span className="wd-dot" />
-                        <span className="wd-env-name">Farm</span>
-                        <span
-                          className="wd-proxy-dot"
-                          style={{ background: '#fb923c', color: '#fb923c' }}
-                        />
-                      </div>
-                    </div>
+                  <div className="welcome-model-cell welcome-model-cell--tab">
+                    <span className="welcome-model-label">Tabs</span>
+                    <strong>What is running</strong>
+                    <span>Game + identity</span>
                   </div>
                 </div>
 
                 <p className="welcome-footnote">
-                  Games are what you launch. Environments are who you launch as.
+                  Select a game, choose an environment, and Silo opens the isolated tab.
                 </p>
                 <div className="welcome-legend">
                   <span className="welcome-legend-item">
@@ -476,7 +595,7 @@ export default function App(): JSX.Element {
             <>
               <TabBar
                 tabs={tabs}
-                activeEnvId={activeEnvId}
+                activeSessionId={activeSessionId}
                 proxyColorMap={proxyColorMap}
                 onSelect={handleSelectTab}
                 onClose={handleCloseTab}
@@ -486,6 +605,16 @@ export default function App(): JSX.Element {
                 selectedGame={selectedGame}
                 envCount={selectedEnvs.length}
                 gamesExist={games.length > 0}
+                onAddEnvironment={
+                  selectedGame
+                    ? () =>
+                        openModal({
+                          type: 'addEnv',
+                          gameId: selectedGame.id,
+                          gameName: selectedGame.name
+                        })
+                    : undefined
+                }
               />
             </>
           )}
@@ -499,12 +628,18 @@ export default function App(): JSX.Element {
         <AddEnvModal
           gameName={modal.gameName}
           hasProxies={proxies.length > 0}
-          onConfirm={(name) => handleAddEnv(modal.gameId, name)}
+          onConfirm={(name, hint) => handleAddEnv(modal.gameId, name, hint)}
           onCancel={closeModal}
         />
       )}
       {modal?.type === 'settings' && (
-        <Settings proxies={proxies} onProxiesChange={handleProxiesChange} onClose={closeModal} />
+        <Settings
+          proxies={proxies}
+          onProxyAdd={handleProxyAdd}
+          onProxyDelete={handleProxyDelete}
+          onClose={closeModal}
+          onError={reportError}
+        />
       )}
     </div>
   )

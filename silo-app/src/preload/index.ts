@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { ProxyMetadata } from '../shared/types'
 
 const siloAPI = {
   // Games
@@ -10,34 +11,56 @@ const siloAPI = {
   // Environments
   getEnvironments: (gameId: string) => ipcRenderer.invoke('envs:get', gameId),
   getAllEnvironments: () => ipcRenderer.invoke('envs:getAll'),
-  createEnvironment: (gameId: string, name: string, proxy: string | null) =>
-    ipcRenderer.invoke('envs:create', gameId, name, proxy),
+  createEnvironment: (gameId: string, name: string, proxy: string | null, accountHint?: string | null) =>
+    ipcRenderer.invoke('envs:create', gameId, name, proxy, accountHint ?? null),
   renameEnvironment: (id: string, name: string) => ipcRenderer.invoke('envs:rename', id, name),
   setEnvironmentProxy: (id: string, proxy: string | null) =>
     ipcRenderer.invoke('envs:setProxy', id, proxy),
+  setEnvironmentAccountHint: (id: string, hint: string | null) =>
+    ipcRenderer.invoke('envs:setAccountHint', id, hint),
   deleteEnvironment: (id: string) => ipcRenderer.invoke('envs:delete', id),
-  clearSession: (partition: string) => ipcRenderer.invoke('envs:clearSession', partition),
+  clearSession: (environmentId: string) => ipcRenderer.invoke('envs:clearSession', environmentId),
+  attachEnvironment: (gameId: string, environmentId: string) =>
+    ipcRenderer.invoke('envs:attach', gameId, environmentId),
 
   // Proxies
-  loadProxies: () => ipcRenderer.invoke('proxies:load'),
-  saveProxies: (proxies: { id: string; label: string; value: string; color: string }[]) =>
-    ipcRenderer.invoke('proxies:save', proxies),
+  loadProxies: (): Promise<ProxyMetadata[]> => ipcRenderer.invoke('proxies:load'),
+  saveProxies: (proxies: ProxyMetadata[]) => ipcRenderer.invoke('proxies:save', proxies),
+  addProxy: (proxy: { label: string; address: string; color: string }): Promise<ProxyMetadata> =>
+    ipcRenderer.invoke('proxies:add', proxy),
+  removeProxy: (id: string): Promise<void> => ipcRenderer.invoke('proxies:remove', id),
+
+  // Smart Proxy
+  loadSettings: () => ipcRenderer.invoke('settings:load'),
+  saveSettings: (settings: { smartProxyEnabled: boolean }) => ipcRenderer.invoke('settings:save', settings),
+  setGameProxyMode: (gameId: string, mode: string) => ipcRenderer.invoke('games:setProxyMode', gameId, mode),
+  getGameProxyMode: (gameId: string) => ipcRenderer.invoke('games:getProxyMode', gameId),
 
   // Browser views
   launchBrowser: (
-    envId: string,
-    partition: string,
-    url: string,
-    proxy: string | null,
+    gameId: string,
+    environmentId: string,
     bounds: { x: number; y: number; width: number; height: number }
-  ) => ipcRenderer.invoke('browser:launch', envId, partition, url, proxy, bounds),
-  showBrowser: (envId: string, bounds: { x: number; y: number; width: number; height: number }) =>
-    ipcRenderer.invoke('browser:show', envId, bounds),
+  ) => ipcRenderer.invoke('browser:launch', gameId, environmentId, bounds),
+  showBrowser: (
+    gameId: string,
+    environmentId: string,
+    bounds: { x: number; y: number; width: number; height: number }
+  ) => ipcRenderer.invoke('browser:show', gameId, environmentId, bounds),
   hideAllBrowsers: () => ipcRenderer.invoke('browser:hideAll'),
-  closeBrowser: (envId: string) => ipcRenderer.invoke('browser:close', envId),
-  resizeBrowser: (envId: string, bounds: { x: number; y: number; width: number; height: number }) =>
-    ipcRenderer.invoke('browser:resize', envId, bounds),
+  closeBrowser: (gameId: string, environmentId: string) =>
+    ipcRenderer.invoke('browser:close', gameId, environmentId),
+  resizeBrowser: (
+    gameId: string,
+    environmentId: string,
+    bounds: { x: number; y: number; width: number; height: number }
+  ) => ipcRenderer.invoke('browser:resize', gameId, environmentId, bounds),
   getOpenBrowserIds: () => ipcRenderer.invoke('browser:openIds'),
+  onBrowserStateChange: (cb: (event: { gameId: string; environmentId: string; state: string; reason?: string }) => void) => {
+    const listener = (_: unknown, event: { gameId: string; environmentId: string; state: string; reason?: string }): void => cb(event)
+    ipcRenderer.on('browser:stateChanged', listener)
+    return () => ipcRenderer.removeListener('browser:stateChanged', listener)
+  },
 
   // Window controls
   minimizeWindow: () => ipcRenderer.invoke('window:minimize'),

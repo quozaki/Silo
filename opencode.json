@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["AGENT.md", "concept.md", "design-system/silo/MASTER.md"],
+  "references": {
+    "vault": {
+      "path": "~/Desktop/ObsidianVault",
+      "description": "Obsidian Vault - single source of truth for Silo specs. Always check 01 Projects/Silo.md + 03 Resources/AI Coding Skills.md before making assumptions"
+    }
+  }
+}

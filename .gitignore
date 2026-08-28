@@ -48,3 +48,7 @@ __pycache__/
 .eslintcache
 coverage/
 .nyc_output/
+
+# Temp / local
+.tmp-chrome-*/
+.codex/

@@ -4,9 +4,11 @@ Parent repository containing the Silo desktop app and marketing website as sibli
 
 ```
 Silo/
-├── silo-app/      → Electron desktop app (React + TypeScript, WebContentsView isolation)
-└── silo-web/      → Marketing website (Vite + React, deploys to Vercel)
-└── silo-website/  → Single-file marketing site (single index.html, no build) — legacy, see silo-web
+├── silo-app/         → Electron desktop app (React 19 + TypeScript, Electron 43, WebContentsView isolation)
+├── silo-web/         → Marketing website (Next.js 14 + React 18 + Tailwind, deploys to Vercel)
+├── design-system/silo/ → Design system (MASTER.md + pages/welcome.md)
+├── concept.md        → Full concept document (mirrored in silo-app/ and silo-web/docs/)
+└── .prompts/         → Session prompts / task logs
 ```
 
 ## Desktop app
@@ -17,18 +19,15 @@ npm run dev      # Electron + Vite
 npm run build:win
 ```
 
-## Website (React)
+## Website (Next.js)
 ```bash
 cd silo-web
 npm install
-npm run dev      # Vite
-npm run build    # → dist/
+npm run dev      # Next.js (next dev)
+npm run build    # → .next/
 ```
 
-Vercel: Root Directory `silo-web`, Build `npm run build`, Output `dist`.
-
-## Website (single-file)
-`silo-website/index.html` — standalone inline CSS/JS, no build, for quick Vercel static deploy.
+Vercel: Root Directory `silo-web`, Framework `Next.js`, Build `npm run build`.
 
 ## Icons
-`Icon/` holds source `Icon.png/.ico/.icns` (three stacked bars) — synced to `silo-app/build/` + `silo-app/resources/` + `silo-web/src` via generation.
+`silo-app/Icon/` holds source `Icon.png/.ico/.icns` (three stacked bars) — synced to `silo-app/build/` + `silo-app/resources/` via electron-builder.

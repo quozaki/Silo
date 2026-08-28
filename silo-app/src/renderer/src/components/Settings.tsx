@@ -1,24 +1,34 @@
 import { useState, useEffect, type JSX } from 'react'
+import type { ProxyMetadata } from '../../../shared/types'
 
-export interface ProxyEntry {
-  id: string
-  label: string
-  value: string
-  color: string
-}
+export type ProxyEntry = ProxyMetadata
 
-const PROXY_COLORS = ['#a78bfa', '#60a5fa', '#34d399', '#fb923c', '#f472b6', '#facc15', '#38bdf8', '#f87171']
+const PROXY_COLORS = [
+  '#a78bfa',
+  '#60a5fa',
+  '#34d399',
+  '#fb923c',
+  '#f472b6',
+  '#facc15',
+  '#38bdf8',
+  '#f87171'
+]
 
 interface Props {
   onClose: () => void
   proxies: ProxyEntry[]
-  onProxiesChange: (proxies: ProxyEntry[]) => void
+  onProxyAdd: (proxy: { label: string; address: string; color: string }) => Promise<void>
+  onProxyDelete: (id: string) => Promise<void>
+  onError?: (error: unknown) => void
 }
 
-export default function Settings({ onClose, proxies, onProxiesChange }: Props): JSX.Element {
+export default function Settings({ onClose, proxies, onProxyAdd, onProxyDelete, onError }: Props): JSX.Element {
   const [label, setLabel] = useState('')
   const [value, setValue] = useState('')
   const [error, setError] = useState('')
+  const [smartEnabled, setSmartEnabled] = useState(true)
+  const [smartLoading, setSmartLoading] = useState(true)
+  const [smartSaving, setSmartSaving] = useState(false)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -28,7 +38,91 @@ export default function Settings({ onClose, proxies, onProxiesChange }: Props): 
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  const handleAdd = (): void => {
+  useEffect(() => {
+    let cancelled = false
+    void window.silo
+      .loadSettings()
+      .then((s) => {
+        if (cancelled) return
+        if (s && typeof s.smartProxyEnabled === 'boolean') setSmartEnabled(s.smartProxyEnabled)
+        setSmartLoading(false)
+      })
+      .catch(() => {
+        onError?.(new Error('Could not load Smart Proxy settings.'))
+        if (!cancelled) setSmartLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [onError])
+
+  const handleSmartToggle = async (): Promise<void> => {
+    const next = !smartEnabled
+    setSmartEnabled(next)
+    setSmartSaving(true)
+    try {
+      await window.silo.saveSettings({ smartProxyEnabled: next })
+    } catch (error) {
+      // revert on failure
+      setSmartEnabled(!next)
+      onError?.(error)
+    } finally {
+      setSmartSaving(false)
+    }
+  }
+
+  // Per-game overrides (only shown when needed)
+  const [games, setGames] = useState<
+    Array<{ id: string; name: string; url: string; proxy_mode?: string | null }>
+  >([])
+  const [gameModes, setGameModes] = useState<Record<string, string>>({})
+  const [gamesLoading, setGamesLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    void window.silo
+      .getGames()
+      .then(async (gs) => {
+        if (cancelled) return
+        setGames(gs as Array<{ id: string; name: string; url: string; proxy_mode?: string | null }>)
+        const modes: Record<string, string> = {}
+        await Promise.all(
+          (gs as Array<{ id: string }>).map(async (g) => {
+            try {
+              const m = await window.silo.getGameProxyMode(g.id)
+              modes[g.id] = typeof m === 'string' ? m : 'inherit'
+            } catch (error) {
+              modes[g.id] = 'inherit'
+              onError?.(error)
+            }
+          })
+        )
+        if (!cancelled) {
+          setGameModes(modes)
+          setGamesLoading(false)
+        }
+      })
+      .catch((error) => {
+        onError?.(error)
+        if (!cancelled) setGamesLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [onError])
+
+  const handleGameModeChange = async (gameId: string, mode: string): Promise<void> => {
+    const prev = gameModes[gameId] || 'inherit'
+    setGameModes((m) => ({ ...m, [gameId]: mode }))
+    try {
+      await window.silo.setGameProxyMode(gameId, mode)
+    } catch (error) {
+      setGameModes((m) => ({ ...m, [gameId]: prev }))
+      onError?.(error)
+    }
+  }
+
+  const handleAdd = async (): Promise<void> => {
     const trimmedValue = value.trim()
     if (!trimmedValue) {
       setError('Proxy address is required')
@@ -40,32 +134,22 @@ export default function Settings({ onClose, proxies, onProxiesChange }: Props): 
       setError('Must start with socks5://, socks4://, or http://')
       return
     }
-    if (proxies.some((p) => p.value === trimmedValue)) {
-      setError('This proxy is already in the pool')
-      return
+    try {
+      await onProxyAdd({
+        label: label.trim() || `Proxy ${proxies.length + 1}`,
+        address: trimmedValue,
+        color: PROXY_COLORS[proxies.length % PROXY_COLORS.length]
+      })
+      setLabel('')
+      setValue('')
+      setError('')
+    } catch (error) {
+      onError?.(error)
     }
-    const newProxy: ProxyEntry = {
-      id: crypto.randomUUID(),
-      label: label.trim() || `Proxy ${proxies.length + 1}`,
-      value: trimmedValue,
-      color: PROXY_COLORS[proxies.length % PROXY_COLORS.length]
-    }
-    onProxiesChange([...proxies, newProxy])
-    setLabel('')
-    setValue('')
-    setError('')
   }
 
-  const handleDelete = (id: string): void => onProxiesChange(proxies.filter((p) => p.id !== id))
-
-  const extractIP = (proxyVal: string): string => {
-    try {
-      const withoutProtocol = proxyVal.replace(/^(socks5|socks4|http):\/\//i, '')
-      const hostPart = withoutProtocol.includes('@') ? withoutProtocol.split('@')[1] : withoutProtocol
-      return hostPart.split(':')[0]
-    } catch {
-      return proxyVal
-    }
+  const handleDelete = (id: string): void => {
+    void onProxyDelete(id).catch(onError)
   }
 
   return (
@@ -83,9 +167,144 @@ export default function Settings({ onClose, proxies, onProxiesChange }: Props): 
           </div>
           <button className="settings-close-btn" onClick={onClose} aria-label="Close settings">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-              <path d="M1 1L11 11M11 1L1 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <path
+                d="M1 1L11 11M11 1L1 11"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
             </svg>
           </button>
+        </div>
+
+        <div className="settings-section settings-panel">
+          <div className="settings-panel-head">
+            <div className="settings-panel-copy">
+              <div className="settings-section-label settings-label-with-icon">
+                <span className="settings-feature-icon" aria-hidden="true">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                    <path
+                      d="M2 6H10M6 2V10"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M3 3L4.2 4.2M8.8 7.8L10 9M3 9L4.2 7.8M8.8 4.2L10 3"
+                      stroke="currentColor"
+                      strokeWidth="1"
+                      strokeLinecap="round"
+                      opacity="0.6"
+                    />
+                  </svg>
+                </span>
+                Smart Proxy
+                <span className="settings-badge">Save ~80% GB</span>
+              </div>
+              <div className="settings-section-desc">
+                Routes only logins, API and WebSocket through your proxy. Static assets (images,
+                audio, fonts, JS bundles) load{' '}
+                <strong style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>direct</strong>{' '}
+                — never billed, never affects gameplay.
+              </div>
+            </div>
+            <button
+              className={`settings-switch ${smartEnabled ? 'is-on' : ''}`}
+              role="switch"
+              aria-checked={smartEnabled}
+              aria-label="Toggle Smart Proxy"
+              onClick={handleSmartToggle}
+              disabled={smartLoading || smartSaving}
+            >
+              <span className="settings-switch-knob" />
+            </button>
+          </div>
+
+          <div className={`settings-info ${smartEnabled ? 'is-on' : ''}`}>
+            <div className="settings-info-row">
+              <span className="settings-info-icon" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                  <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.2" />
+                  <path
+                    d="M7 6.5V8.5M7 5V5.6"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </span>
+              <span>
+                {smartEnabled ? (
+                  <>
+                    <strong>Smart is ON.</strong> Game HTML, <code>/api</code> and WebSocket stay
+                    via proxy. CDN, images, <code>.png .mp3 .woff2 .wasm</code> go direct.
+                  </>
+                ) : (
+                  <>
+                    <strong>Smart is OFF.</strong> Everything routes via proxy, including large game
+                    assets.
+                  </>
+                )}
+              </span>
+            </div>
+            {smartEnabled && (
+              <div className="settings-pills">
+                <span className="proxy-protocol-pill proxy-protocol-pill--accent">
+                  via proxy: HTML / API / WS
+                </span>
+                <span className="proxy-protocol-pill">
+                  direct: CDN / .png .js .css / fonts / media
+                </span>
+              </div>
+            )}
+            <div className="settings-note">
+              Saves, logins and IndexedDB stay isolated.{' '}
+              {smartEnabled ? 'Use Full for a title that checks asset IP.' : ''}
+            </div>
+          </div>
+
+          {games.length > 0 && (
+            <div className="settings-subsection">
+              <div className="settings-subsection-title">Per-game override</div>
+              <div className="settings-subsection-desc">
+                Inherit = use global Smart setting. Use{' '}
+                <strong style={{ color: 'var(--text-muted)' }}>Full</strong> if a title ever checks
+                asset IP (rare, fallback keeps 100% via proxy).
+              </div>
+              <div className="settings-game-modes">
+                {gamesLoading ? (
+                  <div className="settings-loading">Loading games...</div>
+                ) : (
+                  games.map((g) => (
+                    <div key={g.id} className="settings-game-row">
+                      <div className="settings-game-info">
+                        <span className="settings-game-name">{g.name}</span>
+                        <span className="settings-game-url">
+                          {(() => {
+                            try {
+                              return new URL(g.url).hostname
+                            } catch {
+                              return g.url
+                            }
+                          })()}
+                        </span>
+                      </div>
+                      <select
+                        className="settings-select"
+                        value={gameModes[g.id] || 'inherit'}
+                        onChange={(e) => handleGameModeChange(g.id, e.target.value)}
+                        aria-label={`Proxy mode for ${g.name}`}
+                      >
+                        <option value="inherit">Inherit ({smartEnabled ? 'Smart' : 'Full'})</option>
+                        <option value="smart">Smart - save GB</option>
+                        <option value="full">Full - all via proxy</option>
+                      </select>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="modal-divider" />
@@ -102,30 +321,50 @@ export default function Settings({ onClose, proxies, onProxiesChange }: Props): 
                 <div className="proxy-empty-icon" aria-hidden="true">
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3" />
-                    <path d="M5.5 8H10.5M8 5.5V8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                    <path
+                      d="M5.5 8H10.5M8 5.5V8"
+                      stroke="currentColor"
+                      strokeWidth="1.3"
+                      strokeLinecap="round"
+                    />
                   </svg>
                 </div>
                 <span className="proxy-empty-title">No proxies yet</span>
-                <span className="proxy-empty-desc">Environments will launch without a proxy until you add one. Each new environment auto-picks the least-used.</span>
+                <span className="proxy-empty-desc">
+                  Environments will launch without a proxy until you add one. Each new environment
+                  auto-picks the least-used.
+                </span>
               </div>
             )}
             {proxies.map((proxy) => (
               <div key={proxy.id} className="proxy-row" role="listitem">
-                <span className="proxy-color-dot" style={{ background: proxy.color, color: proxy.color } as React.CSSProperties} aria-hidden="true" />
+                <span
+                  className="proxy-color-dot"
+                  style={{ background: proxy.color, color: proxy.color } as React.CSSProperties}
+                  aria-hidden="true"
+                />
                 <div className="proxy-info">
-                  <span className="proxy-label" title={proxy.value}>{proxy.label}</span>
-                  <span className="proxy-ip" title={proxy.value}>{extractIP(proxy.value)}</span>
+                <span className="proxy-label" title={`${proxy.host}:${proxy.port}`}>
+                  {proxy.label}
+                </span>
+                  <span className="proxy-ip" title={`${proxy.host}:${proxy.port}`}>
+                    {proxy.host}:{proxy.port}
+                  </span>
                 </div>
-                <span className="proxy-protocol-pill" style={{ fontSize: 10 }}>{proxy.value.split('://')[0]}</span>
+                <span className="proxy-protocol-pill">{proxy.protocol}</span>
                 <button
-                  className="icon-btn danger"
-                  style={{ opacity: 1 }}
+                  className="icon-btn danger proxy-delete-btn"
                   onClick={() => handleDelete(proxy.id)}
                   aria-label={`Remove proxy ${proxy.label}`}
                   title="Remove proxy"
                 >
                   <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
-                    <path d="M1 1L9 9M9 1L1 9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                    <path
+                      d="M1 1L9 9M9 1L1 9"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                      strokeLinecap="round"
+                    />
                   </svg>
                 </button>
               </div>
@@ -136,7 +375,7 @@ export default function Settings({ onClose, proxies, onProxiesChange }: Props): 
             <div className="proxy-add-form-title">Add proxy</div>
             <div className="modal-field">
               <label htmlFor="proxy-label">
-                Label <span style={{ color: 'var(--text-dim)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+                Label <span className="label-optional">(optional)</span>
               </label>
               <input
                 id="proxy-label"
@@ -158,14 +397,14 @@ export default function Settings({ onClose, proxies, onProxiesChange }: Props): 
                 }}
                 placeholder="socks5://user:pass@ip:port"
                 onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                style={error ? { borderColor: 'var(--danger)', boxShadow: '0 0 0 3px rgba(239,68,68,0.15)' } : {}}
+                className={error ? 'input-error' : undefined}
                 aria-invalid={!!error}
                 aria-describedby={error ? 'proxy-error' : 'proxy-hint'}
                 autoComplete="off"
                 inputMode="url"
               />
               {error && (
-                <span id="proxy-error" role="alert" style={{ fontSize: 12, color: 'var(--danger)', fontWeight: 500 }}>
+                <span id="proxy-error" role="alert" className="field-error">
                   {error}
                 </span>
               )}
@@ -173,10 +412,10 @@ export default function Settings({ onClose, proxies, onProxiesChange }: Props): 
                 <span className="proxy-protocol-pill">socks5://</span>
                 <span className="proxy-protocol-pill">socks4://</span>
                 <span className="proxy-protocol-pill">http://</span>
-                <span style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', marginLeft: 4, alignSelf: 'center' }}>credentials included</span>
+                <span className="proxy-hint-inline">credentials included</span>
               </div>
             </div>
-            <button className="btn-primary" onClick={handleAdd} style={{ alignSelf: 'flex-start' }}>
+            <button className="btn-primary proxy-add-btn" onClick={handleAdd}>
               Add Proxy
             </button>
           </div>

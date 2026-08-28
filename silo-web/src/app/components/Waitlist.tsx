@@ -53,7 +53,7 @@ export default function Waitlist() {
       <div className="waitlist-inner fade-in">
         <div className="s-eyebrow center">Early access</div>
         <h2 className="s-h2">Be the first in.</h2>
-        <p className="wl-sub">Early access is limited. Drop your email — we&apos;ll reach out when Silo is ready.</p>
+        <p className="wl-sub">Join the early access list. We&apos;ll reach out when Silo is ready for your workspace.</p>
         {!success ? (
           <form className="wl-form" onSubmit={handleSubmit} noValidate>
             <label htmlFor="waitlist-email" className="sr-only">

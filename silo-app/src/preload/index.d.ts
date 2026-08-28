@@ -1,4 +1,4 @@
-import type { Game, Environment, Bounds } from '../shared/types'
+import type { Game, Environment, Bounds, ProxyMetadata } from '../shared/types'
 
 export type { Game, Environment, Bounds }
 
@@ -15,30 +15,39 @@ declare global {
       createEnvironment: (
         gameId: string,
         name: string,
-        proxy: string | null
+        proxy: string | null,
+        accountHint?: string | null
       ) => Promise<{ id: string; partition: string }>
       renameEnvironment: (id: string, name: string) => Promise<void>
       setEnvironmentProxy: (id: string, proxy: string | null) => Promise<void>
+      setEnvironmentAccountHint: (id: string, hint: string | null) => Promise<void>
       deleteEnvironment: (id: string) => Promise<void>
-      clearSession: (partition: string) => Promise<void>
+      clearSession: (environmentId: string) => Promise<void>
+      attachEnvironment: (gameId: string, environmentId: string) => Promise<void>
 
-      loadProxies: () => Promise<{ id: string; label: string; value: string; color: string }[]>
-      saveProxies: (
-        proxies: { id: string; label: string; value: string; color: string }[]
-      ) => Promise<void>
+      loadProxies: () => Promise<ProxyMetadata[]>
+      saveProxies: (proxies: ProxyMetadata[]) => Promise<void>
+      addProxy: (proxy: { label: string; address: string; color: string }) => Promise<ProxyMetadata>
+      removeProxy: (id: string) => Promise<void>
+
+      loadSettings: () => Promise<{ smartProxyEnabled: boolean }>
+      saveSettings: (settings: { smartProxyEnabled: boolean }) => Promise<void>
+      setGameProxyMode: (gameId: string, mode: string) => Promise<void>
+      getGameProxyMode: (gameId: string) => Promise<string>
 
       launchBrowser: (
-        envId: string,
-        partition: string,
-        url: string,
-        proxy: string | null,
+        gameId: string,
+        environmentId: string,
         bounds: Bounds
       ) => Promise<void>
-      showBrowser: (envId: string, bounds: Bounds) => Promise<void>
+      showBrowser: (gameId: string, environmentId: string, bounds: Bounds) => Promise<void>
       hideAllBrowsers: () => Promise<void>
-      closeBrowser: (envId: string) => Promise<void>
-      resizeBrowser: (envId: string, bounds: Bounds) => Promise<void>
+      closeBrowser: (gameId: string, environmentId: string) => Promise<void>
+      resizeBrowser: (gameId: string, environmentId: string, bounds: Bounds) => Promise<void>
       getOpenBrowserIds: () => Promise<string[]>
+      onBrowserStateChange: (
+        cb: (event: { gameId: string; environmentId: string; state: string; reason?: string }) => void
+      ) => () => void
 
       minimizeWindow: () => Promise<void>
       maximizeWindow: () => Promise<void>

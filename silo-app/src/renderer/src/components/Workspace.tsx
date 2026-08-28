@@ -6,13 +6,15 @@ interface Props {
   selectedGame?: Game | null
   envCount?: number
   gamesExist?: boolean
+  onAddEnvironment?: () => void
 }
 
 export default function Workspace({
   hasActiveBrowser,
   selectedGame,
   envCount = 0,
-  gamesExist = true
+  gamesExist = true,
+  onAddEnvironment
 }: Props): JSX.Element {
   if (hasActiveBrowser) {
     return <div className="workspace workspace-active" aria-hidden="true" />
@@ -22,8 +24,8 @@ export default function Workspace({
   if (gamesExist && !selectedGame) {
     return (
       <div className="workspace-empty" role="region" aria-label="Workspace">
-        <div className="ws-hint-card">
-          <div className="ws-hint-icon" aria-hidden="true">
+        <div className="ws-launch-panel">
+          <div className="ws-launch-icon" aria-hidden="true">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
               <path
                 d="M3 4.5C3 3.12 4.12 2 5.5 2H8.5L11 4.5H16.5C17.88 4.5 19 5.62 19 7V15.5C19 16.88 17.88 18 16.5 18H5.5C4.12 18 3 16.88 3 15.5V4.5Z"
@@ -40,22 +42,15 @@ export default function Workspace({
               />
             </svg>
           </div>
-          <h2 className="ws-hint-title">Select a game</h2>
-          <p className="ws-hint-desc">
-            Pick a game on the left to see its environments below. Each game keeps its own isolated
-            identities.
-          </p>
-          <div className="ws-hint-action" aria-hidden="true">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-              <path
-                d="M4 3L7 6L4 9"
-                stroke="currentColor"
-                strokeWidth="1.3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span>Choose a game in the upper pane</span>
+          <div className="ws-launch-copy">
+            <span className="ws-launch-eyebrow">Ready</span>
+            <h2 className="ws-launch-title">Choose a game</h2>
+            <p className="ws-launch-desc">Games are destinations. Pick one in the upper sidebar.</p>
+          </div>
+          <div className="ws-model-strip" aria-hidden="true">
+            <span className="ws-model-token is-current">Game</span>
+            <span className="ws-model-token">Environment</span>
+            <span className="ws-model-token">Tab</span>
           </div>
         </div>
       </div>
@@ -66,8 +61,8 @@ export default function Workspace({
   if (selectedGame && envCount === 0) {
     return (
       <div className="workspace-empty" role="region" aria-label="Workspace">
-        <div className="ws-hint-card">
-          <div className="ws-hint-icon" aria-hidden="true">
+        <div className="ws-launch-panel">
+          <div className="ws-launch-icon" aria-hidden="true">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
               <rect
                 x="3"
@@ -91,24 +86,21 @@ export default function Workspace({
               <circle cx="6.5" cy="6" r="1" fill="currentColor" opacity="0.9" />
             </svg>
           </div>
-          <h2 className="ws-hint-title">Environments for {selectedGame.name}</h2>
-          <p className="ws-hint-desc">No environments yet — add one above.</p>
-          <div className="ws-hint-action" aria-hidden="true">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-              <path
-                d="M6 2V10M2 6H10"
-                stroke="currentColor"
-                strokeWidth="1.3"
-                strokeLinecap="round"
-              />
-            </svg>
-            <span>Add an environment in the lower pane</span>
+          <div className="ws-launch-copy">
+            <span className="ws-launch-eyebrow">Selected game</span>
+            <h2 className="ws-launch-title">{selectedGame.name}</h2>
+            <p className="ws-launch-desc">
+              Add an environment to create the identity you will launch as.
+            </p>
           </div>
-          <div className="ws-hint-kbd" aria-hidden="true">
-            <span>Tip</span>
-            <kbd>Double-click</kbd>
-            <span>to rename</span>
+          <div className="ws-model-strip" aria-hidden="true">
+            <span className="ws-model-token is-ready">Game</span>
+            <span className="ws-model-token is-current">Environment</span>
+            <span className="ws-model-token">Tab</span>
           </div>
+          <button className="btn-secondary ws-launch-button" onClick={onAddEnvironment}>
+            Add Environment
+          </button>
         </div>
       </div>
     )
@@ -117,8 +109,8 @@ export default function Workspace({
   // Default: game selected, envs exist, but none open/selected → pick an env (MASTER §8C tier 2 with envs)
   return (
     <div className="workspace-empty" role="region" aria-label="Workspace">
-      <div className="ws-hint-card">
-        <div className="ws-hint-icon" aria-hidden="true">
+      <div className="ws-launch-panel">
+        <div className="ws-launch-icon" aria-hidden="true">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
             <rect
               x="3"
@@ -139,29 +131,23 @@ export default function Workspace({
             <circle cx="10" cy="7" r="1.2" fill="currentColor" opacity="0.5" />
           </svg>
         </div>
-        <h2 className="ws-hint-title">
-          {selectedGame ? `Environments for ${selectedGame.name}` : 'Select an environment'}
-        </h2>
-        <p className="ws-hint-desc">
-          Choose an environment from the sidebar to launch its isolated browser. Each runs in a
-          sealed partition — no cookies bleed.
-        </p>
-        <div className="ws-hint-action" aria-hidden="true">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-            <path
-              d="M3 6H9M7 3L10 6L7 9"
-              stroke="currentColor"
-              strokeWidth="1.3"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          <span>Select an environment from the sidebar</span>
+        <div className="ws-launch-copy">
+          <span className="ws-launch-eyebrow">Selected game</span>
+          <h2 className="ws-launch-title">
+            {selectedGame ? selectedGame.name : 'Select an environment'}
+          </h2>
+          <p className="ws-launch-desc">
+            Choose an environment in the lower sidebar to open the isolated browser tab.
+          </p>
         </div>
-        <div className="ws-hint-kbd" aria-hidden="true">
-          <span>Tip</span>
-          <kbd>Double-click</kbd>
-          <span>to rename</span>
+        <div className="ws-model-strip" aria-hidden="true">
+          <span className="ws-model-token is-ready">Game</span>
+          <span className="ws-model-token is-current">Environment</span>
+          <span className="ws-model-token">Tab</span>
+        </div>
+        <div className="ws-shortcuts" aria-hidden="true">
+          <span>Ctrl+Shift+N</span>
+          <span>new environment</span>
         </div>
       </div>
     </div>

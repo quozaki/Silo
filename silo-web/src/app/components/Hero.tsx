@@ -1,126 +1,56 @@
 "use client";
 
+import Link from "next/link";
+import { useState } from "react";
 import { useFadeIn } from "@/hooks/useFadeIn";
+
+type DemoTab = { game: string; environment: string; url: string; proxy: string };
+const tabs: DemoTab[] = [
+  { game: "StrategyCombat", environment: "Main", url: "strategycombat.com", proxy: "EU-West" },
+  { game: "StrategyCombat", environment: "Farm", url: "strategycombat.com", proxy: "US-East" },
+  { game: "Combat Siege", environment: "Alt 1", url: "combatsiege.com", proxy: "Direct" },
+];
 
 export default function Hero() {
   useFadeIn();
-  const handleWaitlistClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    e.preventDefault();
-    const target = document.getElementById("waitlist");
-    const input = document.getElementById("waitlist-email");
-    if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
-    setTimeout(() => input?.focus(), 420);
-  };
+  const [activeTab, setActiveTab] = useState(0);
+  const active = tabs[activeTab];
   return (
     <section id="hero">
-      <div className="hero-inner">
-        <div className="pill fade-in">
-          <span className="pill-dot"></span>Early Access · Windows only
-        </div>
-        <h1 className="fade-in">One place, many accounts — each completely isolated</h1>
-        <p className="hero-sub fade-in">One place, many accounts — each completely isolated. Silo gives each game account a sealed browser session with separate cookies, storage, and IP.</p>
-        <div className="hero-ctas fade-in">
-          <a href="#waitlist" className="btn-primary" onClick={handleWaitlistClick}>
-            Join the Waitlist
-          </a>
-          <a href="#features" className="btn-secondary">
-            Learn More
-          </a>
+      <div className="hero-shell">
+        <div className="hero-copy">
+          <div className="hero-kicker fade-in"><span className="status-pulse" />Desktop workspace for DITOGAMES</div>
+          <h1 className="fade-in">One place, many accounts.<br /><span>Each completely isolated.</span></h1>
+          <p className="hero-sub fade-in">Silo keeps every DITOGAMES account in its own persistent environment, so you can launch, switch, and keep going without logging in and out.</p>
+          <div className="hero-ctas fade-in"><Link href="/download" className="btn-primary">Download Silo <span className="btn-arrow">-&gt;</span></Link><a href="#how" className="btn-secondary">See how it works <span className="btn-arrow">v</span></a></div>
+          <div className="hero-proof fade-in"><span className="proof-mark">✓</span> Windows desktop app <span className="proof-divider" /> Local-first sessions <span className="proof-divider" /> Built for focus</div>
         </div>
 
-        <div className="mockup-wrap fade-in">
-          <div className="app-mockup">
-            <div className="mockup-titlebar">
-              <div className="tb-dot tb-close"></div>
-              <div className="tb-dot tb-min"></div>
-              <div className="tb-dot tb-max"></div>
-              <span className="tb-title">Silo</span>
-            </div>
-            <div className="mockup-body">
-              <div className="m-sidebar">
-                <div className="sb-label">Games</div>
-                <div className="sb-game active">
-                  <svg className="g-icon" viewBox="0 0 26 26" fill="none">
-                    <rect width="26" height="26" rx="6" fill="#1a2740" />
-                    <rect x="5" y="10" width="16" height="6" rx="2" fill="#3a7bd5" opacity="0.85" />
-                    <rect x="9" y="5" width="8" height="6" rx="1.5" fill="#2a5caa" opacity="0.7" />
-                  </svg>
-                  <span className="g-name">Forge of Empires</span>
-                </div>
-                <div className="sb-game">
-                  <svg className="g-icon" viewBox="0 0 26 26" fill="none">
-                    <rect width="26" height="26" rx="6" fill="#1a2a1a" />
-                    <circle cx="13" cy="13" r="6" fill="#2d7a2d" opacity="0.7" />
-                    <circle cx="13" cy="13" r="3" fill="#5cb85c" opacity="0.55" />
-                  </svg>
-                  <span className="g-name">Tribal Wars</span>
-                </div>
-                <div className="sb-game">
-                  <svg className="g-icon" viewBox="0 0 26 26" fill="none">
-                    <rect width="26" height="26" rx="6" fill="#251a2a" />
-                    <polygon points="13,6 21,20 5,20" fill="#9c4dc5" opacity="0.6" />
-                  </svg>
-                  <span className="g-name">Grepolis</span>
-                </div>
-                <div className="sb-divider"></div>
-                <div className="sb-label top-gap">Environments</div>
-                <div className="sb-env">
-                  <div className="e-dot e-dot-live"></div>
-                  <span className="e-name">Main</span>
-                  <span className="e-proxy-dot" style={{ background: "#60a5fa", color: "#60a5fa" }} aria-hidden="true"></span>
-                  <span className="e-badge live">Live</span>
-                </div>
-                <div className="sb-env">
-                  <div className="e-dot"></div>
-                  <span className="e-name">Alt 1</span>
-                  <span className="e-badge idle">Idle</span>
-                </div>
-                <div className="sb-env">
-                  <div className="e-dot"></div>
-                  <span className="e-name">Farm</span>
-                  <span className="e-proxy-dot" style={{ background: "#fb923c", color: "#fb923c" }} aria-hidden="true"></span>
-                  <span className="e-badge idle">Idle</span>
-                </div>
-              </div>
-              <div className="m-main">
-                <div className="m-tabbar">
-                  <div className="m-tab active">
-                    <div className="t-dot t-dot-live"></div>
-                    Main
-                  </div>
-                  <div className="m-tab inactive">
-                    <div className="t-dot"></div>
-                    Alt 1
-                  </div>
-                </div>
-                <div className="m-content">
-                  <div className="browser-shell">
-                    <div className="b-urlbar">
-                      <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
-                        <circle cx="4.5" cy="4.5" r="4" stroke="#3a3a3a" strokeWidth="1" />
-                        <path d="M4.5 2.5v2l1.2 1.2" stroke="#3a3a3a" strokeWidth="1" strokeLinecap="round" />
-                      </svg>
-                      <div className="b-pill">
-                        <span className="b-url">forgeofempires.com</span>
-                        <span className="b-proxy">US-West · Proxy</span>
-                      </div>
-                    </div>
-                    <div className="b-page">
-                      <div className="b-block"></div>
-                      <div className="b-line w78"></div>
-                      <div className="b-line w60"></div>
-                      <div className="b-spacer"></div>
-                      <div className="b-line w86"></div>
-                      <div className="b-line w55"></div>
-                      <div className="b-line w72"></div>
-                    </div>
-                  </div>
-                </div>
+        <div className="hero-product fade-in" aria-label="Silo product preview">
+          <div className="product-window">
+            <div className="product-titlebar"><div className="product-brand"><img src="/icon.png" alt="" width={16} height={16} /><strong>SILO</strong><span>BETA</span></div><div className="product-context">Example workspace</div><div className="window-controls"><i /><i /><i /></div></div>
+            <div className="product-main">
+              <aside className="product-sidebar">
+                <div className="product-search"><span>⌕</span> Search workspace <kbd>Ctrl K</kbd></div>
+                <div className="product-section-head"><span><small>WHERE</small>Games</span><b>+</b></div>
+                <div className="product-game active"><span className="game-glyph glyph-blue">S</span><span>StrategyCombat</span><em>2</em></div>
+                <div className="product-game"><span className="game-glyph glyph-green">C</span><span>Combat Siege</span><em>1</em></div>
+                <div className="product-section-head env-head"><span><small>WHO</small>Environments</span><b>+</b></div>
+                <div className="product-env active"><span className="live-dot live" />Main <span className="proxy-dot blue" /><em>LIVE</em></div>
+                <div className="product-env"><span className="live-dot" />Farm <span className="proxy-dot orange" /><em>IDLE</em></div>
+                <div className="product-env"><span className="live-dot" />Alt 1 <em>IDLE</em></div>
+                <div className="sidebar-bottom"><span>◌</span> Settings <small>PROXY</small></div>
+              </aside>
+              <div className="product-workspace">
+                <div className="product-tabs" role="tablist" aria-label="Running tabs">{tabs.map((tab, index) => <button key={`${tab.game}-${tab.environment}`} className={`product-tab ${activeTab === index ? "selected" : ""}`} onClick={() => setActiveTab(index)} role="tab" aria-selected={activeTab === index}><span className={`tab-live ${activeTab === index ? "on" : ""}`} /><span><strong>{tab.game}</strong><small> · {tab.environment}</small></span><b>x</b></button>)}<span className="tab-add">+</span></div>
+                <div className="browser-view"><div className="browser-toolbar"><span className="browser-nav">&lt;　&gt;　↻</span><div className="address"><span>⌁</span>{active.url}<b>{active.proxy !== "Direct" ? `${active.proxy} · Proxy` : "No proxy"}</b></div><span className="browser-menu">...</span></div><div className="browser-content"><div className="browser-status"><span className="status-pill"><i /> {active.environment}</span><span>persistent environment</span></div><div className="browser-heading">{active.game}</div><div className="browser-lines"><i /><i /><i /><i /><i /></div><div className="browser-skeleton"><div /><div /><div /></div><div className="browser-footer"><span>Session ready</span><span>{active.proxy !== "Direct" ? active.proxy : "Direct connection"}</span></div></div></div>
               </div>
             </div>
           </div>
+          <div className="product-caption"><span><i className="caption-dot blue" />Game</span><span>+</span><span><i className="caption-dot green" />Environment</span><span>-&gt;</span><strong>Running Tab</strong><span className="caption-note">Click a tab to switch identity</span></div>
         </div>
       </div>
+      <div className="hero-scroll"><span>Scroll to explore</span><i /></div>
     </section>
   );
 }

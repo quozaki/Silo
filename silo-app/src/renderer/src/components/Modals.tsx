@@ -209,12 +209,13 @@ export function AddGameModal({ onConfirm, onCancel }: AddGameModalProps): JSX.El
 interface AddEnvModalProps {
   gameName: string
   hasProxies: boolean
-  onConfirm: (name: string) => void
+  onConfirm: (name: string, accountHint: string | null) => void
   onCancel: () => void
 }
 
 export function AddEnvModal({ gameName, hasProxies, onConfirm, onCancel }: AddEnvModalProps): JSX.Element {
   const [name, setName] = useState('')
+  const [accountHint, setAccountHint] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -228,7 +229,8 @@ export function AddEnvModal({ gameName, hasProxies, onConfirm, onCancel }: AddEn
 
   const handleSubmit = (): void => {
     if (!name.trim()) return
-    onConfirm(name.trim())
+    const hint = accountHint.trim() ? accountHint.trim().slice(0, 64) : null
+    onConfirm(name.trim(), hint)
   }
 
   return (
@@ -260,6 +262,20 @@ export function AddEnvModal({ gameName, hasProxies, onConfirm, onCancel }: AddEn
             aria-required="true"
           />
           <span className="modal-hint">Each environment is a fully isolated browser</span>
+        </div>
+        <div className="modal-field">
+          <label htmlFor="env-hint">Account hint <span className="label-optional">(optional)</span></label>
+          <input
+            id="env-hint"
+            value={accountHint}
+            onChange={(e) => setAccountHint(e.target.value)}
+            placeholder="e.g. player@email.com or username"
+            maxLength={64}
+            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+            autoComplete="off"
+            aria-label="Account hint - username or email, not a password"
+          />
+          <span className="modal-hint">Shown in sidebar to remember which account to login — not a password, not auto-filled</span>
         </div>
         {hasProxies && (
           <div className="modal-proxy-info" role="status">

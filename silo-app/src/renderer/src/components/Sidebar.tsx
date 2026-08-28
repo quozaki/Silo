@@ -19,6 +19,7 @@ interface Props {
   onOpenSettings: () => void
   onRenameGame: (id: string, newName: string) => void
   onRenameEnv: (id: string, newName: string) => void
+  onSetEnvHint: (id: string, hint: string | null) => void
 }
 
 export default function Sidebar({
@@ -36,7 +37,8 @@ export default function Sidebar({
   onDeleteEnv,
   onOpenSettings,
   onRenameGame,
-  onRenameEnv
+  onRenameEnv,
+  onSetEnvHint
 }: Props): JSX.Element {
   const [search, setSearch] = useState('')
   const [gamesCollapsed, setGamesCollapsed] = useState(false)
@@ -44,6 +46,8 @@ export default function Sidebar({
   const [editingGameDraft, setEditingGameDraft] = useState('')
   const [editingEnvId, setEditingEnvId] = useState<string | null>(null)
   const [editingEnvDraft, setEditingEnvDraft] = useState('')
+  const [editingHintId, setEditingHintId] = useState<string | null>(null)
+  const [editingHintDraft, setEditingHintDraft] = useState('')
 
   const selectedGame = useMemo(
     () => games.find((g) => g.id === selectedGameId) ?? null,
@@ -68,7 +72,9 @@ export default function Sidebar({
   const filteredEnvs = useMemo(() => {
     if (!search.trim()) return selectedEnvs
     const q = search.toLowerCase()
-    return selectedEnvs.filter((e) => e.name.toLowerCase().includes(q))
+    return selectedEnvs.filter(
+      (e) => e.name.toLowerCase().includes(q) || (e.account_hint && e.account_hint.toLowerCase().includes(q))
+    )
   }, [selectedEnvs, search])
 
   const totalEnvCount = useMemo(
@@ -213,6 +219,7 @@ export default function Sidebar({
     const isOpen = openEnvIds.includes(env.id)
     const proxyColor = proxyColorMap[env.id]
     const isEditing = editingEnvId === env.id
+    const isEditingHint = editingHintId === env.id
     const dotUsesProxy = Boolean(isOpen && proxyColor)
 
     const confirm = (): void => {
@@ -223,21 +230,29 @@ export default function Sidebar({
       onRenameEnv(env.id, trimmed)
     }
     const cancel = (): void => setEditingEnvId(null)
+    const confirmHint = (): void => {
+      const trimmed = editingHintDraft.trim()
+      const original = env.account_hint ?? ''
+      setEditingHintId(null)
+      if (trimmed === original) return
+      onSetEnvHint(env.id, trimmed.length ? trimmed.slice(0, 64) : null)
+    }
+    const cancelHint = (): void => setEditingHintId(null)
 
     return (
       <div
         key={env.id}
-        className={`env-row ${isActive ? 'active' : ''}`}
+        className={`env-row ${isActive ? 'active' : ''} ${isEditingHint ? 'env-row--editing-hint' : ''}`}
         role="button"
         tabIndex={0}
         aria-current={isActive ? 'true' : undefined}
-        aria-label={`${selectedGame.name} · ${env.name}${isOpen ? ' live' : ' idle'}${proxyColor ? ' proxy' : ''}`}
+        aria-label={`${selectedGame.name} · ${env.name}${env.account_hint ? ` · ${env.account_hint}` : ''}${isOpen ? ' live' : ' idle'}${proxyColor ? ' proxy' : ''}`}
         onClick={() => {
-          if (isEditing) return
+          if (isEditing || isEditingHint) return
           onSelectEnv(env, selectedGame)
         }}
         onKeyDown={(e) => {
-          if (isEditing) return
+          if (isEditing || isEditingHint) return
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
             onSelectEnv(env, selectedGame)
@@ -280,17 +295,48 @@ export default function Sidebar({
               boxShadow: '0 0 0 3px var(--accent-ring)'
             }}
           />
-        ) : (
-          <span
-            className="env-name"
-            title={env.name}
-            onDoubleClick={(e) => {
-              e.stopPropagation()
-              setEditingEnvId(env.id)
-              setEditingEnvDraft(env.name)
+        ) : isEditingHint ? (
+          <input
+            autoFocus
+            value={editingHintDraft}
+            aria-label={`Edit account hint for ${env.name}`}
+            placeholder="username or email"
+            maxLength={64}
+            onChange={(e) => setEditingHintDraft(e.target.value)}
+            onBlur={confirmHint}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+              else if (e.key === 'Escape') cancelHint()
             }}
-          >
-            {env.name}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              background: 'var(--bg)',
+              border: '1px solid var(--accent)',
+              borderRadius: 6,
+              outline: 'none',
+              color: 'var(--text)',
+              fontSize: '11px',
+              fontWeight: 500,
+              fontFamily: 'var(--font-mono)',
+              padding: '4px 8px',
+              boxShadow: '0 0 0 3px var(--accent-ring)'
+            }}
+          />
+        ) : (
+          <span className="env-name-wrap" title={env.account_hint ? `${env.name} · ${env.account_hint}` : env.name}>
+            <span
+              className="env-name"
+              onDoubleClick={(e) => {
+                e.stopPropagation()
+                setEditingEnvId(env.id)
+                setEditingEnvDraft(env.name)
+              }}
+            >
+              {env.name}
+            </span>
+            {env.account_hint && <span className="env-hint" aria-label={`Account ${env.account_hint}`}>· {env.account_hint}</span>}
           </span>
         )}
         {/* Status text + proxy trailing */}
@@ -310,6 +356,21 @@ export default function Sidebar({
             />
           )}
         </span>
+        <button
+          className={`icon-btn env-hint-btn ${env.account_hint ? 'has-hint' : ''}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            setEditingHintId(env.id)
+            setEditingHintDraft(env.account_hint ?? '')
+          }}
+          aria-label={env.account_hint ? `Edit account hint for ${env.name}` : `Add account hint to ${env.name}`}
+          title={env.account_hint ? `Hint: ${env.account_hint} — click to edit` : 'Add account hint (username/email)'}
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+            <path d="M1 7.5L7.2 1.3a1 1 0 011.4 0l.1.1a1 1 0 010 1.4L2.5 9H1V7.5z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
+            <path d="M6.5 1.8l1.7 1.7" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+          </svg>
+        </button>
         <span className="env-launch-icon" aria-hidden="true" title="Launch">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
             <path
@@ -361,14 +422,17 @@ export default function Sidebar({
         <input
           id="silo-search"
           type="text"
-          placeholder="Search games…"
+          placeholder="Search games and environments..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="sidebar-search-input"
-          aria-label="Search games"
+          aria-label="Search games and environments"
           autoComplete="off"
           spellCheck={false}
         />
+        <span className="sr-only" aria-live="polite">
+          {filteredGames.length} games, {filteredEnvs.length} environments
+        </span>
         {search && (
           <button className="search-clear" onClick={() => setSearch('')} aria-label="Clear search">
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
@@ -406,7 +470,10 @@ export default function Sidebar({
               />
             </svg>
           </button>
-          <span className="sidebar-section-title">GAMES</span>
+          <div className="sidebar-section-name">
+            <span className="sidebar-section-title">Games</span>
+            <span className="sidebar-section-kicker">Where</span>
+          </div>
           <span
             className="count-pill"
             aria-label={`${games.length} games, ${totalEnvCount} environments total`}
@@ -418,7 +485,7 @@ export default function Sidebar({
             className="sidebar-add-btn"
             onClick={onAddGame}
             aria-label="Add game"
-            title="Add Game (⌘N)"
+            title="Add Game (Ctrl+N)"
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
               <path
@@ -477,7 +544,15 @@ export default function Sidebar({
                 proximity={250}
                 aria-label="Add your first game"
                 onClick={onAddGame}
-                style={{ marginTop: 8, fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600, letterSpacing: '-0.01em' } as React.CSSProperties}
+                style={
+                  {
+                    marginTop: 8,
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    letterSpacing: '-0.01em'
+                  } as React.CSSProperties
+                }
               >
                 Add Game
               </SpecularButton>
@@ -512,7 +587,10 @@ export default function Sidebar({
       <section className="sidebar-section sidebar-section--envs" aria-label="Environments">
         <div className="sidebar-section-header">
           <div className="envs-header-text">
-            <span className="sidebar-section-title">ENVIRONMENTS</span>
+            <div className="sidebar-section-name">
+              <span className="sidebar-section-title">Environments</span>
+              <span className="sidebar-section-kicker">Who</span>
+            </div>
             <span
               className={`envs-subtitle ${!selectedGame ? 'envs-subtitle--empty' : ''}`}
               title={
@@ -530,7 +608,7 @@ export default function Sidebar({
                   <span>{selectedEnvs.length}</span>
                 </>
               ) : (
-                'Select a game'
+                'Choose a game first'
               )}
             </span>
           </div>
@@ -638,10 +716,7 @@ export default function Sidebar({
                 <div className="sidebar-empty-text">
                   <span>No environments yet</span>
                   <span>
-                    Add one for{' '}
-                    <strong style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
-                      {selectedGame.name}
-                    </strong>
+                    Add one for <strong>{selectedGame.name}</strong>
                   </span>
                 </div>
               </div>
@@ -697,17 +772,7 @@ export default function Sidebar({
             />
           </svg>
           <span>Settings</span>
-          <span
-            style={{
-              marginLeft: 'auto',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 10,
-              color: 'var(--text-dim)',
-              letterSpacing: '0.04em'
-            }}
-          >
-            PROXY
-          </span>
+          <span className="settings-kicker">PROXY</span>
         </button>
       </div>
     </aside>

@@ -1,21 +1,53 @@
-import { app, shell, BrowserWindow, ipcMain, WebContentsView, session } from 'electron'
+import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../build/icon.png?asset'
 import { initDB } from './db'
+import { getEnvironmentById, getGameById, setLegacyProxyMigrator } from './db'
 import { registerIPC } from './ipc'
-import { openViews } from './views'
+import { initializeProxyStore, proxyIdForLegacyAddress } from './proxyStore'
+import {
+  setBrowserWindow,
+  launchBrowserSession,
+  showBrowserSession,
+  hideAllBrowserSessions,
+  closeBrowserSession,
+  resizeBrowserSession,
+  getOpenBrowserIds,
+  shutdownBrowserSessions,
+  type ViewBounds
+} from './views'
+import { getProxyCredentials } from './smartProxy'
+import { SiloError, logInternalError, toSafeError, registerSafeIpcHandler } from './errors'
 
-type ViewBounds = { x: number; y: number; width: number; height: number }
+// These module exports keep the main-process boundaries directly testable;
+// production behavior remains driven by the app startup below.
+export {
+  initDB, createGame, createEnvironment, getGames, getEnvironments, getAllEnvironments,
+  getGameById, getEnvironmentById, getEnvironments as getEnvironmentsForTest, partitionForEnvironment, persist,
+  renameGame, deleteGame, renameEnvironment, deleteEnvironment, attachEnvironmentToGame, getEnvironmentPartition,
+  setEnvironmentAccountHint, getEnvironmentAccountHint,
+  setGameProxyMode, getGameProxyMode, getAllEnvironments as getAllEnvironmentsAlias
+} from './db'
+export { atomicWriteFile } from './storage'
+export { saveSmartProxySettings, loadSmartProxySettings, rememberProxyCredentials, rememberProxyCredentialsForProxy, getProxyCredentials, clearProxyCredentials, clearAllProxyCredentials, getBaseDomain, getGameHost, buildPacScript, parseProxy, resolveEffectiveMode, proxyCredentials } from './smartProxy'
+export { initializeProxyStore, listProxyMetadata, getProxyConfig, addProxy, removeProxy, resetProxyStoreForTests } from './proxyStore'
+export { setBrowserWindow, launchBrowserSession, closeBrowserSession, getOpenBrowserIds, browserSessions, openViews, showBrowserSession, hideAllBrowserSessions, resizeBrowserSession, closeSessionsForEnvironment, closeSessionsForGame, shutdownBrowserSessions } from './views'
 
 let mainWindow: BrowserWindow
 let windowIpcRegistered = false
+let shutdownStarted = false
 
 // ── Workspace geometry (must match renderer App.tsx constants) ────────────────
 const SIDEBAR_WIDTH = 280 // fixed per design-system
 const TITLEBAR_HEIGHT = 32
 const TABBAR_HEIGHT = 40
 const WORKSPACE_Y = TITLEBAR_HEIGHT + TABBAR_HEIGHT // 72
+const ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function registerSafe(channel: string, handler: (...args: never[]) => unknown): void {
+  registerSafeIpcHandler(ipcMain, channel, handler, `Could not complete ${channel}.`)
+}
 
 function getWorkspaceBounds(): ViewBounds {
   // TitleBar 32 + TabBar 40 + Sidebar 280  =>  {x:280, y:72, w:innerWidth-280, h:innerHeight-72}
@@ -26,189 +58,105 @@ function getWorkspaceBounds(): ViewBounds {
   return { x: SIDEBAR_WIDTH, y: WORKSPACE_Y, width: w - SIDEBAR_WIDTH, height: h - WORKSPACE_Y }
 }
 
-function hideAllViews(): void {
-  // Defensive: detach every child currently attached, not just those in the Map
-  if (!mainWindow || mainWindow.isDestroyed()) return
-  for (const child of [...mainWindow.contentView.children]) {
-    try {
-      mainWindow.contentView.removeChildView(child as WebContentsView)
-    } catch {
-      // already detached
-    }
+function requireBrowserResourceIds(gameId: unknown, environmentId: unknown): { gameId: string; environmentId: string } {
+  if (typeof gameId !== 'string' || !ID_PATTERN.test(gameId)) throw new SiloError('INVALID_REQUEST', 'Invalid gameId.')
+  if (typeof environmentId !== 'string' || !ID_PATTERN.test(environmentId)) throw new SiloError('INVALID_REQUEST', 'Invalid environmentId.')
+  if (!getGameById(gameId)) throw new SiloError('NOT_FOUND', 'Game not found.')
+  if (!getEnvironmentById(environmentId)) throw new SiloError('NOT_FOUND', 'Environment not found.')
+  return { gameId, environmentId }
+}
+
+function validateBounds(bounds: unknown): asserts bounds is ViewBounds {
+  if (!bounds || typeof bounds !== 'object') throw new SiloError('INVALID_REQUEST', 'Invalid browser bounds.')
+  const value = bounds as Record<string, unknown>
+  if (!['x', 'y', 'width', 'height'].every((key) => typeof value[key] === 'number' && Number.isFinite(value[key]))) {
+    throw new SiloError('INVALID_REQUEST', 'Invalid browser bounds.')
+  }
+  if ((value.width as number) <= 0 || (value.height as number) <= 0 || (value.width as number) > 10000 || (value.height as number) > 10000) {
+    throw new SiloError('INVALID_REQUEST', 'Invalid browser bounds.')
   }
 }
 
-function showView(envId: string, bounds?: ViewBounds): void {
-  const view = openViews.get(envId)
-  if (!view) return
-  const b = bounds && bounds.x === SIDEBAR_WIDTH && bounds.y === WORKSPACE_Y ? bounds : getWorkspaceBounds()
-  hideAllViews()
-  mainWindow.contentView.addChildView(view)
-  view.setBounds(b)
-  // Paranoia: ensure no other view stayed attached (race)
-  for (const child of [...mainWindow.contentView.children]) {
-    if (child !== view) {
-      try {
-        mainWindow.contentView.removeChildView(child as WebContentsView)
-      } catch {
-        // ignore
-      }
+function registerProxyAuthHandler(): void {
+  // Handle PAC proxy auth (credentials stripped from PAC, supplied via login event)
+  // Using app 'login' covers all sessions. Also register per-session fallback.
+  const handleLogin = (
+    event: Electron.Event,
+    _webContents: Electron.WebContents,
+    _details: Electron.Details,
+    authInfo: Electron.AuthInfo,
+    callback: (username: string, password: string) => void
+  ): void => {
+    if (!authInfo.isProxy) return
+    const creds = getProxyCredentials(_webContents.session, authInfo.host, String(authInfo.port))
+    event.preventDefault()
+    if (creds) {
+      callback(creds.username, creds.password)
     }
   }
+  // Remove existing to avoid duplicates on reload (dev HMR)
+  app.removeAllListeners('login')
+  app.on('login', handleLogin as unknown as (...args: unknown[]) => void)
 }
-
-async function applyProxy(ses: Electron.Session, proxy: string | null): Promise<void> {
-  try {
-    if (proxy) {
-      await ses.setProxy({ proxyRules: proxy })
-    } else {
-      // Persist partitions keep the last proxy; always reset when none is assigned
-      await ses.setProxy({ mode: 'direct' })
-    }
-  } catch (err) {
-    console.error('Failed to apply proxy:', err)
-  }
-}
-
-const pendingLaunches = new Set<string>()
 
 function registerWindowIpc(): void {
   if (windowIpcRegistered) return
   windowIpcRegistered = true
 
-  ipcMain.handle(
+  registerSafe(
     'browser:launch',
-    async (
-      _,
-      envId: string,
-      partition: string,
-      url: string,
-      proxy: string | null,
-      bounds: ViewBounds
-    ): Promise<void> => {
-      if (typeof envId !== 'string' || !/^[0-9a-f-]{36}$/.test(envId)) return
-      if (typeof partition !== 'string' || partition !== `persist:silo-${envId}`) return
-      if (typeof url !== 'string' || !/^https?:\/\/.+/.test(url) || url.length > 2048) return
-      if (proxy !== null && (typeof proxy !== 'string' || !/^(socks5|socks4|http):\/\/.+/i.test(proxy))) return
-      if (!bounds || typeof bounds.x !== 'number' || typeof bounds.y !== 'number' || typeof bounds.width !== 'number' || typeof bounds.height !== 'number') return
-      if (pendingLaunches.has(envId)) return
-      if (openViews.has(envId)) {
-        showView(envId, bounds)
-        return
-      }
-      pendingLaunches.add(envId)
+    async (_, rawGameId: unknown, rawEnvironmentId: unknown, rawBounds: unknown): Promise<void> => {
+      const { gameId, environmentId } = requireBrowserResourceIds(rawGameId, rawEnvironmentId)
+      validateBounds(rawBounds)
+      const bounds = rawBounds
+      const target = getWorkspaceBounds()
+      const safeBounds =
+        bounds.x === SIDEBAR_WIDTH && bounds.y === WORKSPACE_Y && bounds.width === target.width && bounds.height === target.height
+          ? bounds
+          : target
       try {
-        // session.fromPartition('persist:silo-'+uuid) per env — isolated storage + proxy
-        const ses = session.fromPartition(partition)
-        await applyProxy(ses, proxy)
-
-        // Re-check after async gap — another launch may have finished
-        if (openViews.has(envId)) {
-          showView(envId, bounds)
-          return
-        }
-
-        const view = new WebContentsView({
-          webPreferences: {
-            session: ses,
-            sandbox: true,
-            contextIsolation: true,
-            nodeIntegration: false,
-            webSecurity: true
-          }
-        })
-
-        // Avoid white flash: dark background until first paint
-        try {
-          ;(view as unknown as { setBackgroundColor?: (c: string) => void }).setBackgroundColor?.('#09090B')
-        } catch {
-          // ignore — View may not support setBackgroundColor on some Electron versions
-        }
-        try {
-          ;(view.webContents as unknown as { setBackgroundColor?: (c: string) => void }).setBackgroundColor?.('#09090B')
-        } catch {
-          // ignore
-        }
-
-        hideAllViews()
-        mainWindow.contentView.addChildView(view)
-        // Defensive: always use computed workspace bounds (x:280 y:72 w:innerWidth-280 h:innerHeight-72)
-        const targetBounds = getWorkspaceBounds()
-        // Validate caller-provided bounds matches expected geometry — if not, use computed
-        const useBounds =
-          bounds.x === SIDEBAR_WIDTH &&
-          bounds.y === WORKSPACE_Y &&
-          bounds.width === targetBounds.width &&
-          bounds.height === targetBounds.height
-            ? bounds
-            : targetBounds
-        view.setBounds(useBounds)
-        await view.webContents.loadURL(url)
-        openViews.set(envId, view)
-      } finally {
-        pendingLaunches.delete(envId)
+        await launchBrowserSession(gameId, environmentId, safeBounds)
+      } catch (error) {
+        throw toSafeError(error, 'Could not launch the game session.')
       }
     }
   )
 
-  ipcMain.handle('browser:show', (_, envId: string, bounds: ViewBounds) => {
-    if (typeof envId !== 'string' || !/^[0-9a-f-]{36}$/.test(envId)) return
-    showView(envId, bounds)
+  registerSafe('browser:show', (_, rawGameId: unknown, rawEnvironmentId: unknown, rawBounds: unknown) => {
+    const { gameId, environmentId } = requireBrowserResourceIds(rawGameId, rawEnvironmentId)
+    validateBounds(rawBounds)
+    showBrowserSession(gameId, environmentId, getWorkspaceBounds())
   })
 
-  ipcMain.handle('browser:hideAll', () => {
-    hideAllViews()
+  registerSafe('browser:hideAll', () => {
+    hideAllBrowserSessions()
   })
 
-  ipcMain.handle('browser:close', (_, envId: string) => {
-    if (typeof envId !== 'string' || !/^[0-9a-f-]{36}$/.test(envId)) return
-    const view = openViews.get(envId)
-    if (!view) return
-    try {
-      mainWindow.contentView.removeChildView(view)
-    } catch {
-      // View may already have been removed
-    }
-    try {
-      view.webContents.close()
-    } catch {
-      // already closed
-    }
-    openViews.delete(envId)
+  registerSafe('browser:close', (_, rawGameId: unknown, rawEnvironmentId: unknown) => {
+    const { gameId, environmentId } = requireBrowserResourceIds(rawGameId, rawEnvironmentId)
+    return closeBrowserSession(gameId, environmentId).catch((error) => {
+      throw toSafeError(error, 'Could not close the game session.')
+    })
   })
 
-  ipcMain.handle('browser:resize', (_, envId: string, bounds: ViewBounds) => {
-    if (typeof envId !== 'string' || !/^[0-9a-f-]{36}$/.test(envId)) return
-    const view = openViews.get(envId)
-    if (!view) return
-    // Defensive: ignore stale/typo bounds, always set to computed workspace bounds on resize
-    const computed = getWorkspaceBounds()
-    const useBounds =
-      bounds && typeof bounds.x === 'number' && bounds.x === SIDEBAR_WIDTH && bounds.y === WORKSPACE_Y
-        ? bounds
-        : computed
-    // setBounds is the resize path — no detach needed, just update geometry
-    view.setBounds(useBounds)
-    // If the view is the active one but was detached (e.g. modal hide), re-attach defensively
-    const isAttached = [...mainWindow.contentView.children].includes(view as unknown as typeof mainWindow.contentView.children[number])
-    if (!isAttached) {
-      // Only re-attach if this env is supposed to be visible — caller will showView next
-      // Don't auto-attach here; just ensure bounds are fresh for next showView
-    }
+  registerSafe('browser:resize', (_, rawGameId: unknown, rawEnvironmentId: unknown, rawBounds: unknown) => {
+    const { gameId, environmentId } = requireBrowserResourceIds(rawGameId, rawEnvironmentId)
+    validateBounds(rawBounds)
+    resizeBrowserSession(gameId, environmentId, getWorkspaceBounds())
   })
 
-  ipcMain.handle('browser:openIds', () => {
-    return Array.from(openViews.keys())
+  registerSafe('browser:openIds', () => {
+    return getOpenBrowserIds()
   })
 
-  ipcMain.handle('window:minimize', () => mainWindow.minimize())
-  ipcMain.handle('window:maximize', () => {
+  registerSafe('window:minimize', () => mainWindow.minimize())
+  registerSafe('window:maximize', () => {
     if (mainWindow.isMaximized()) mainWindow.unmaximize()
     else mainWindow.maximize()
   })
-  ipcMain.handle('window:close', () => mainWindow.close())
-  ipcMain.handle('window:isMaximized', () => mainWindow.isMaximized())
-  ipcMain.handle('window:getSize', () => {
+  registerSafe('window:close', () => mainWindow.close())
+  registerSafe('window:isMaximized', () => mainWindow.isMaximized())
+  registerSafe('window:getSize', () => {
     const [width, height] = mainWindow.getContentSize()
     return { width, height }
   })
@@ -240,15 +188,8 @@ function createWindow(): void {
   })
 
   mainWindow.on('closed', () => {
-    // Prevent leaked views when window is recreated (e.g. macOS activate)
-    for (const view of openViews.values()) {
-      try {
-        view.webContents.close()
-      } catch {
-        // ignore
-      }
-    }
-    openViews.clear()
+    void shutdownBrowserSessions()
+    setBrowserWindow(null)
   })
 
   mainWindow.on('maximize', () => mainWindow.webContents.send('window:maximizeChange', true))
@@ -276,23 +217,48 @@ function createWindow(): void {
   }
 
   registerWindowIpc()
+  setBrowserWindow(mainWindow)
 }
 
-app.whenReady().then(async () => {
+function registerShutdownHandling(): void {
+  app.on('before-quit', (event) => {
+    if (shutdownStarted) return
+    event.preventDefault()
+    shutdownStarted = true
+    void shutdownBrowserSessions()
+      .catch((error) => {
+        logInternalError('Silo browser shutdown encountered an error:', error)
+      })
+      .finally(() => {
+        app.quit()
+      })
+  })
+}
+
+export const appStartup = app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.silo')
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  registerProxyAuthHandler()
+  initializeProxyStore()
+  setLegacyProxyMigrator(proxyIdForLegacyAddress)
   await initDB()
   createWindow()
+  registerShutdownHandling()
   registerIPC()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+}).catch((error) => {
+  logInternalError('Silo failed to start:', error)
+  app.quit()
+  throw error
 })
+void appStartup.catch(() => undefined)
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
